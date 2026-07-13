@@ -136,22 +136,41 @@ table.datatable th,table.datatable td{border:1px solid var(--line);padding:2px 6
 table.datatable th{color:var(--muted);font-weight:600}
 .scrollx{overflow-x:auto}
 
-/* ---------- digitizer ---------- */
-.dig-stage{position:relative;background:var(--stage);border:1px solid var(--line);border-radius:10px;min-height:200px;display:flex;justify-content:center;align-items:flex-start}
-#digMedia{position:relative;width:fit-content;max-width:100%;margin:0 auto}
-#digMedia video,#digMedia img{display:block;max-width:100%;max-height:56vh;width:auto;height:auto;border-radius:9px}
+/* ---------- digitizer (fixed-height, no page scroll) ---------- */
+#digMain.diglayout{height:calc(100dvh - var(--dig-header,64px));max-width:1480px;margin:0 auto;padding:10px 20px;
+  display:grid;grid-template-columns:250px minmax(0,1fr);gap:14px;overflow:hidden}
+@media (max-width:820px){ #digMain.diglayout{grid-template-columns:1fr;height:auto;overflow:visible} }
+.dig-rail{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;padding-right:4px}
+.dig-rail .panel{padding:10px 12px}
+.dig-rail .panel h3{margin-bottom:6px}
+.dig-work{display:flex;flex-direction:column;min-height:0;gap:8px}
+.dig-toolbar{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;box-shadow:var(--shadow);padding:8px 12px}
+.dig-toolbar .grp{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dig-toolbar .sep{width:1px;align-self:stretch;background:var(--line)}
+.dig-toolbar .lbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.dig-stage{position:relative;background:var(--stage);border:1px solid var(--line);border-radius:10px;
+  flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden}
+#digMedia{position:relative;transform-origin:0 0;will-change:transform;line-height:0}
+#digMedia video,#digMedia img{display:block;width:100%;height:100%;border-radius:6px}
 #digMedia svg.overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
-.dig-empty{padding:60px 20px;text-align:center;color:var(--muted)}
+#digStage.panning{cursor:grab}
+#digStage.panning.dragging{cursor:grabbing}
+.dig-empty{padding:40px 20px;text-align:center;color:var(--muted);max-width:520px}
+.zoombadge{position:absolute;top:8px;right:10px;background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  padding:2px 8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;pointer-events:none;opacity:.9}
 .kbtns{display:flex;flex-wrap:wrap;gap:6px}
 .kbtns button[aria-pressed="true"]{border-color:transparent;font-weight:700;color:var(--accent-ink)}
-.steps{margin:0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+.pnav button{padding:2px 7px;font-size:12px}
+.steps{margin:0;padding-left:18px;font-size:12px;color:var(--muted)}
 .steps li.done{color:var(--accent)}
 .steps li.now{color:var(--ink);font-weight:600}
 .framerow{display:flex;gap:8px;align-items:center;font-size:12.5px;border-bottom:1px dashed var(--line);padding:3px 0}
 .framerow .dots{display:flex;gap:3px}
 .framerow .dot{width:9px;height:9px;border-radius:50%;background:var(--line)}
 .framerow .dot.on{background:var(--accent)}
-.frameslist{max-height:220px;overflow-y:auto}
+.frameslist{flex:1;min-height:80px;overflow-y:auto}
+.dig-rail .panel.framespanel{flex:1;min-height:120px;display:flex;flex-direction:column}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s}
 .toast.show{opacity:.95}
 @media (prefers-reduced-motion: reduce){ .toast{transition:none} }
@@ -300,20 +319,22 @@ footer.app a{color:var(--accent)}
 </main>
 
 <!-- ============================ DIGITIZE MODE ============================ -->
-<main id="digMain" hidden>
-  <div class="rail">
+<main id="digMain" class="diglayout" hidden>
+  <div class="dig-rail">
     <div class="panel">
       <h3>1 · Source</h3>
       <div class="stack">
         <div class="row">
           <button id="btnLoadVideo" class="primary">Load video…</button>
-          <button id="btnLoadImage">Load image…</button>
+          <button id="btnLoadImage">Image…</button>
         </div>
         <input type="file" id="videoFile" accept="video/*" hidden>
         <input type="file" id="imageFile" accept="image/*" hidden>
         <input type="file" id="projectFile" accept=".json,application/json" hidden>
         <div class="row">
           <button id="btnAutoTrack">✨ Auto-track (AI)</button>
+        </div>
+        <div class="row">
           <button id="btnImportProject" title="Re-open a saved .handpath.json project (video + points) to keep editing">Import project…</button>
         </div>
         <div id="aiProgress" class="hint" style="display:none">
@@ -329,16 +350,16 @@ footer.app a{color:var(--accent)}
               <option value="dtl">Down-the-line</option>
             </select>
           </label>
-          <label>Target is
+          <label>Target
             <select id="digDir">
-              <option value="1">screen-right</option>
-              <option value="-1">screen-left</option>
+              <option value="1">→ right</option>
+              <option value="-1">← left</option>
             </select>
           </label>
         </div>
         <div class="row">
-          <label>Video fps <input type="number" id="digFps" value="30" min="10" max="240" style="width:64px"></label>
-          <label>Golfer height (in) <input type="number" id="digHeight" value="71" min="48" max="84" style="width:64px"></label>
+          <label>fps <input type="number" id="digFps" value="30" min="10" max="240" style="width:52px"></label>
+          <label>Height in <input type="number" id="digHeight" value="71" min="48" max="84" style="width:52px"></label>
         </div>
       </div>
     </div>
@@ -346,76 +367,81 @@ footer.app a{color:var(--accent)}
     <div class="panel">
       <h3>2 · Calibrate</h3>
       <ol class="steps" id="calSteps">
-        <li data-step="0">Click top of the golfer's head (at address)</li>
-        <li data-step="1">Click the ground at the golfer's feet</li>
-        <li data-step="2">Click the body center (sternum) at address</li>
+        <li data-step="0">Top of head (address)</li>
+        <li data-step="1">Ground at the feet</li>
+        <li data-step="2">Body center (sternum)</li>
       </ol>
-      <div class="row" style="margin-top:8px">
-        <button id="btnCalibrate">Start calibration</button>
+      <div class="row" style="margin-top:6px">
+        <button id="btnCalibrate">Start</button>
         <span class="hint mono" id="calReadout">not calibrated</span>
       </div>
     </div>
 
     <div class="panel">
-      <h3>3 · Track &amp; correct</h3>
-      <div class="kbtns" id="kpBtns"></div>
-      <p class="hint" style="margin:8px 0 0">Step frames, click to place the selected point. <b>Drag any existing dot to fix it</b> (AI dots show a dashed ring until you touch them). Same framing keeps calibration valid.</p>
-      <div class="row" style="margin-top:8px">
-        <label>Jump to P</label>
-        <div class="kbtns" id="pNav" style="flex:1"></div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <label>Tag this frame as
-          <select id="digPhase">
-            <option value="">—</option>
-          </select>
-        </label>
-        <button id="btnUndo">Undo click</button>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h3>4 · Save</h3>
+      <h3>3 · Save</h3>
       <div class="stack">
-        <input type="text" id="digName" placeholder="Name — e.g. Rory McIlroy · Driver · face-on">
+        <input type="text" id="digName" placeholder="Name — e.g. Rory · Driver · face-on">
         <div class="row">
           <label>Club <select id="digClub"><option>Driver</option><option selected>7-iron</option><option>Wedge</option><option>Other</option></select></label>
-          <button id="btnSavePlayer" class="primary">Save to library</button>
+          <button id="btnSavePlayer" class="primary">Save</button>
         </div>
-        <div class="row">
-          <button id="btnExportProject">Export project (video + points)…</button>
-        </div>
-        <p class="hint">Needs calibration + ≥ 6 frames with a hands point. Saved swings appear in Study mode. <b>Export project</b> bundles the video + tracked points into one file you can re-open later to keep editing.</p>
+        <div class="row"><button id="btnExportProject">Export project (video + points)…</button></div>
+        <p class="hint">Needs calibration + ≥ 6 frames with hands. <b>Export project</b> saves the video + points to re-open later.</p>
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel framespanel">
       <h3>Captured frames</h3>
       <div class="frameslist" id="framesList"><p class="hint">No frames yet.</p></div>
     </div>
   </div>
 
-  <div class="stagewrap">
+  <div class="dig-work">
+    <div class="dig-toolbar">
+      <div class="grp">
+        <span class="lbl">Point</span>
+        <div class="kbtns" id="kpBtns"></div>
+      </div>
+      <div class="sep"></div>
+      <div class="grp">
+        <span class="lbl">Jump P</span>
+        <div class="kbtns pnav" id="pNav"></div>
+      </div>
+      <div class="sep"></div>
+      <div class="grp">
+        <span class="lbl">Tag</span>
+        <select id="digPhase"><option value="">—</option></select>
+        <button id="btnUndo" title="Undo last point">Undo</button>
+      </div>
+    </div>
+
     <div class="dig-stage" id="digStage">
       <div class="dig-empty" id="digEmpty">
         <p><b>Load a face-on or down-the-line video</b>, then hit <b>✨ Auto-track (AI)</b>.</p>
         <p>The AI pose-tracks the swing in your browser, auto-calibrates from the golfer's height, and tags P1–P10. Then step frame-by-frame or jump to a P and <b>drag any dot to correct it</b> — AI points show a dashed ring until you fix them.</p>
-        <p>Prefer full manual? Calibrate (3 clicks) and place points yourself. Either way, <b>Export project</b> to save the video + points and re-open later. (Offline or big batch? <span class="mono">pipeline/track_swing.py</span> does the same on your machine.)</p>
+        <p><b>Zoom</b> with the scroll wheel or the +/− buttons to place dots precisely; <b>Pan</b> to move around. Prefer full manual? Calibrate (3 clicks) and place points yourself.</p>
       </div>
       <div id="digMedia" hidden>
         <video id="digVideo" hidden playsinline muted></video>
         <img id="digImage" hidden alt="digitizing frame">
         <svg class="overlay" id="digOverlay" hidden></svg>
       </div>
+      <span class="zoombadge" id="zoomBadge" hidden>100%</span>
     </div>
-    <div class="transport">
+
+    <div class="transport" style="gap:8px">
       <div class="controls">
         <button id="fPrev5">−5f</button><button id="fPrev">−1f</button>
         <button id="fNext">+1f</button><button id="fNext5">+5f</button>
         <input type="range" id="digScrub" min="0" max="1000" value="0" step="1" aria-label="Video position">
-        <span class="mono hint" id="digTime" style="min-width:88px;text-align:right">0.000 s</span>
+        <span class="mono hint" id="digTime" style="min-width:78px;text-align:right">0.000 s</span>
+        <div class="sep" style="width:1px;height:20px;background:var(--line)"></div>
+        <button id="btnZoomOut" title="Zoom out">−</button>
+        <button id="btnZoomIn" title="Zoom in">＋</button>
+        <button id="btnZoomFit" title="Fit / reset zoom">Fit</button>
+        <button id="btnPan" title="Pan mode (drag to move the view)" aria-pressed="false">✋ Pan</button>
       </div>
-      <p class="hint" style="margin:0">Keys: ← → step 1 frame · Shift+←/→ step 5 · number keys 1–5 pick the tracked point.</p>
+      <p class="hint" style="margin:0">←/→ step frame · keys 1–5 pick point · wheel/±=zoom · space or ✋ to pan · <b>drag a dot to move</b> · <b>click a dot then Delete</b> (or Alt-/double-click) to remove.</p>
     </div>
   </div>
 </main>
@@ -1347,7 +1373,21 @@ document.addEventListener("keydown",(e)=>{
   } else {
     if (e.key==="ArrowRight"||e.key==="ArrowLeft"){ e.preventDefault(); digStep((e.key==="ArrowRight"?1:-1)*(e.shiftKey?5:1)); }
     if (/^[1-5]$/.test(e.key)) selectKp(parseInt(e.key,10)-1);
+    if (e.key===" "){ e.preventDefault(); dig.spaceHeld=true; $("digStage").classList.add("panning"); }
+    if ((e.key==="+"||e.key==="=")){ const r=$("digStage").getBoundingClientRect(); zoomAt(r.left+r.width/2,r.top+r.height/2,1.3); }
+    if (e.key==="-"||e.key==="_"){ const r=$("digStage").getBoundingClientRect(); zoomAt(r.left+r.width/2,r.top+r.height/2,1/1.3); }
+    if (e.key==="0"){ zoomFit(); }
+    if ((e.key==="Delete"||e.key==="Backspace") && dig.sel){
+      e.preventDefault();
+      const fr=dig.frames.get(dig.sel.tMs);
+      if (fr){ delete fr.pts[dig.sel.key]; if (fr.ai) fr.ai.delete(dig.sel.key);
+        if (!Object.keys(fr.pts).length) dig.frames.delete(dig.sel.tMs); }
+      dig.sel=null; renderFrames(); redrawOverlay(); toast("Point deleted");
+    }
   }
+});
+document.addEventListener("keyup",(e)=>{
+  if (e.key===" " && dig.spaceHeld){ dig.spaceHeld=false; if(!panMode) $("digStage").classList.remove("panning"); }
 });
 
 /* ---------- export / import ---------- */
@@ -1412,6 +1452,9 @@ const dig = {
   clicks:[],          // undo stack: [tMs, key]
   videoFile:null,     // the loaded video File (for saving with the swing)
   drag:null,          // {tMs, key} while dragging an existing point
+  pan:null,           // {x,y} while panning the zoomed view
+  spaceHeld:false,    // space bar held => temporary pan
+  sel:null,           // {tMs,key} currently-selected point (Delete removes)
 };
 function digCurMs(){ return dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : null; }
 function nearestPoint(px,py,tolPx){
@@ -1474,13 +1517,61 @@ function resetCapture(){
   $("calReadout").textContent="not calibrated";
   renderCalSteps(); renderFrames(); redrawOverlay();
 }
+function fitMediaToStage(){
+  const ov=$("digOverlay"); if (ov.hasAttribute("hidden")) return;
+  const stage=$("digStage"), m=$("digMedia");
+  const sw=stage.clientWidth-8, sh=stage.clientHeight-8;
+  const vw=parseFloat(ov.dataset.w)||16, vh=parseFloat(ov.dataset.h)||9;
+  if (sw<=0||sh<=0) return;
+  const aspect=vw/vh;
+  let w,h;
+  if (sw/sh > aspect){ h=sh; w=sh*aspect; } else { w=sw; h=sw/aspect; }
+  m.style.width=w+"px"; m.style.height=h+"px";
+}
 function setupOverlay(w,h){
   const ov=$("digOverlay");
   ov.removeAttribute("hidden");   // SVG elements have no .hidden IDL property
   ov.setAttribute("viewBox",`0 0 ${w} ${h}`);
   ov.dataset.w=w; ov.dataset.h=h;
+  fitMediaToStage();
+  zoomFit();
   redrawOverlay();
 }
+
+/* ---------- zoom / pan (CSS transform on #digMedia; dots stay in pixel space) ---------- */
+const zoom = { z:1, tx:0, ty:0 };
+function applyZoom(){
+  const m=$("digMedia");
+  m.style.transform=`translate(${zoom.tx}px,${zoom.ty}px) scale(${zoom.z})`;
+  const badge=$("zoomBadge");
+  if (badge){ badge.hidden = zoom.z===1 && zoom.tx===0 && zoom.ty===0; badge.textContent=Math.round(zoom.z*100)+"%"; }
+}
+function zoomFit(){ zoom.z=1; zoom.tx=0; zoom.ty=0; applyZoom(); redrawOverlay(); }
+function zoomAt(clientX, clientY, factor){
+  const m=$("digMedia"); const r=m.getBoundingClientRect();
+  if (!r.width) return;
+  const fx=(clientX-r.left)/r.width, fy=(clientY-r.top)/r.height;
+  const nz=Math.max(1, Math.min(16, zoom.z*factor));
+  // keep the point under the cursor fixed: new left = clientX - fx*newWidth
+  zoom.tx = clientX - fx*(r.width*nz/zoom.z) - (r.left - zoom.tx);
+  zoom.ty = clientY - fy*(r.height*nz/zoom.z) - (r.top - zoom.ty);
+  zoom.z = nz;
+  if (zoom.z===1){ zoom.tx=0; zoom.ty=0; }
+  applyZoom(); redrawOverlay();   // re-render dots at constant screen size
+}
+$("digStage").addEventListener("wheel",(e)=>{
+  if ($("digMedia").hasAttribute("hidden")) return;
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, e.deltaY<0 ? 1.15 : 1/1.15);
+},{passive:false});
+$("btnZoomIn").addEventListener("click",()=>{ const r=$("digStage").getBoundingClientRect(); zoomAt(r.left+r.width/2, r.top+r.height/2, 1.3); });
+$("btnZoomOut").addEventListener("click",()=>{ const r=$("digStage").getBoundingClientRect(); zoomAt(r.left+r.width/2, r.top+r.height/2, 1/1.3); });
+$("btnZoomFit").addEventListener("click",zoomFit);
+let panMode=false;
+$("btnPan").addEventListener("click",()=>{
+  panMode=!panMode; $("btnPan").setAttribute("aria-pressed",String(panMode));
+  $("digStage").classList.toggle("panning",panMode);
+});
 
 /* frame nav */
 function digStep(n){
@@ -1519,8 +1610,19 @@ function ovCoords(e){
   return [(e.clientX-r.left)/r.width * parseFloat(ov.dataset.w),
           (e.clientY-r.top)/r.height * parseFloat(ov.dataset.h)];
 }
+// screen→pixel scale: how many video-pixels per one screen-pixel right now
+function pxPerScreen(){
+  const ov=$("digOverlay"); const r=ov.getBoundingClientRect();
+  return r.width ? (parseFloat(ov.dataset.w)/r.width) : 1;
+}
 $("digOverlay").addEventListener("pointerdown",(e)=>{
   const ov=$("digOverlay");
+  // PAN mode (or middle/right button, or space held): drag the view instead of editing
+  if ((panMode || e.button===1 || e.button===2 || dig.spaceHeld) && !(dig.calStep>=0)){
+    dig.pan={ x:e.clientX, y:e.clientY };
+    $("digStage").classList.add("dragging");
+    ov.setPointerCapture(e.pointerId); e.preventDefault(); return;
+  }
   const [px,py]=ovCoords(e);
   if (dig.calStep>=0 && dig.calStep<3){
     dig._calPts.push([px,py]);
@@ -1540,14 +1642,24 @@ $("digOverlay").addEventListener("pointerdown",(e)=>{
     renderCalSteps(); redrawOverlay(); return;
   }
   if (!dig.cal){ toast("Calibrate first (panel 2)"); return; }
-  // EDIT: if the click lands on an existing point in the current frame, grab it to drag
-  const tol = Math.max(8, (parseFloat(ov.dataset.w)||100)/40);
+  // EDIT: if the click lands on an existing point in the current frame, grab it to drag.
+  // Tolerance ~14 screen-px converted to pixel space, so it works at any zoom.
+  const tol = 14 * pxPerScreen();
   const hit = nearestPoint(px,py,tol);
   if (hit){
+    if (e.altKey || e.shiftKey){                        // modifier-click deletes a dot
+      const fr=dig.frames.get(hit.tMs);
+      delete fr.pts[hit.key]; if (fr.ai) fr.ai.delete(hit.key);
+      if (!Object.keys(fr.pts).length) dig.frames.delete(hit.tMs);
+      renderFrames(); redrawOverlay(); toast("Point deleted"); return;
+    }
     dig.drag = hit;
+    dig.sel = hit;                                      // select it (Delete/Backspace removes)
     ov.setPointerCapture(e.pointerId);
+    redrawOverlay();
     return;
   }
+  dig.sel = null;
   // otherwise place/replace the selected keypoint on the current frame
   const tMs = dig.kind==="video" ? digCurMs() : dig.frames.size*33;
   if (!dig.frames.has(tMs)) dig.frames.set(tMs,{pts:{},p:0});
@@ -1560,18 +1672,36 @@ $("digOverlay").addEventListener("pointerdown",(e)=>{
   renderFrames(); redrawOverlay();
 });
 $("digOverlay").addEventListener("pointermove",(e)=>{
+  if (dig.pan){
+    zoom.tx += e.clientX-dig.pan.x; zoom.ty += e.clientY-dig.pan.y;
+    dig.pan={ x:e.clientX, y:e.clientY }; applyZoom(); return;
+  }
   if (!dig.drag) return;
   const [px,py]=ovCoords(e);
   const fr=dig.frames.get(dig.drag.tMs);
   if (fr && fr.pts[dig.drag.key]){ fr.pts[dig.drag.key]=[px,py]; if (fr.ai) fr.ai.delete(dig.drag.key); redrawOverlay(); }
 });
 function endDrag(e){
+  if (dig.pan){ dig.pan=null; $("digStage").classList.remove("dragging");
+    try{ $("digOverlay").releasePointerCapture(e.pointerId); }catch(_){} return; }
   if (!dig.drag) return;
   try{ $("digOverlay").releasePointerCapture(e.pointerId); }catch(_){}
   dig.drag=null; renderFrames(); redrawOverlay();
 }
 $("digOverlay").addEventListener("pointerup",endDrag);
 $("digOverlay").addEventListener("pointercancel",endDrag);
+$("digOverlay").addEventListener("contextmenu",(e)=>e.preventDefault());
+// double-click a dot to delete it
+$("digOverlay").addEventListener("dblclick",(e)=>{
+  const [px,py]=ovCoords(e);
+  const hit=nearestPoint(px,py, 16*pxPerScreen());
+  if (hit){
+    const fr=dig.frames.get(hit.tMs);
+    delete fr.pts[hit.key]; if (fr.ai) fr.ai.delete(hit.key);
+    if (!Object.keys(fr.pts).length) dig.frames.delete(hit.tMs);
+    renderFrames(); redrawOverlay(); toast("Point deleted");
+  }
+});
 $("digPhase").addEventListener("change",()=>{
   if (dig.kind!=="video") return;
   const tMs=Math.round($("digVideo").currentTime*1000);
@@ -1592,7 +1722,8 @@ function redrawOverlay(){
   const ov=$("digOverlay"); if (ov.hasAttribute("hidden")) return;
   ov.textContent="";
   const W=parseFloat(ov.dataset.w)||100;
-  const r=Math.max(3,W/220);
+  // dot radius kept ~constant on screen (~7px) regardless of zoom, so dots never bloat
+  const r=Math.max(2.5, 7*pxPerScreen());
   if (dig.cal){
     el("line",{x1:0,y1:dig.cal.groundY,x2:W,y2:dig.cal.groundY,stroke:"var(--c-ov1)","stroke-width":r/2,"stroke-dasharray":"6 6",opacity:.8},ov);
     el("line",{x1:dig.cal.centerX,y1:0,x2:dig.cal.centerX,y2:parseFloat(ov.dataset.h),stroke:"var(--c-ov1)","stroke-width":r/2,"stroke-dasharray":"6 6",opacity:.6},ov);
@@ -1620,6 +1751,8 @@ function redrawOverlay(){
         stroke:isAI?kp.color:(isCur?"#fff":"none"),"stroke-width":isAI?r*0.55:(isCur?r/3:0),
         "stroke-dasharray":isAI?`${r*0.9} ${r*0.7}`:""},ov);
       if (isAI) el("circle",{cx:cx0,cy:cy0,r:r*0.35,fill:kp.color,opacity:isCur?1:.4},ov);
+      if (dig.sel && dig.sel.key===k && Math.abs(t-(digCurMs()??-1))<40)
+        el("circle",{cx:cx0,cy:cy0,r:r*1.9,fill:"none",stroke:"var(--accent)","stroke-width":r*0.4,opacity:.95},ov);
       if (isCur){
         const tx=el("text",{x:cx0+r*1.9,y:cy0+r*0.6,"font-size":r*2.0,"font-family":"sans-serif","font-weight":"600",
           fill:kp.color,stroke:"var(--stage)","stroke-width":r*0.4,"paint-order":"stroke"},ov);
@@ -1912,15 +2045,24 @@ $("btnImportProject").addEventListener("click",()=>$("projectFile").click());
 $("projectFile").addEventListener("change",e=>{ const f=e.target.files[0]; if(f){ setMode("dig"); importProject(f); } e.target.value=""; });
 
 /* ---------- mode switching ---------- */
+function sizeDigLayout(){
+  const hdr=document.querySelector("header.app");
+  const h=(hdr?hdr.offsetHeight:56)+8;
+  document.documentElement.style.setProperty("--dig-header", h+"px");
+}
 function setMode(m){
   $("modeStudy").setAttribute("aria-pressed",String(m==="study"));
   $("modeDigitize").setAttribute("aria-pressed",String(m==="dig"));
   $("studyMain").hidden = m!=="study";
   $("digMain").hidden = m!=="dig";
+  const ft=document.querySelector("footer.app"); if (ft) ft.hidden = m==="dig";  // no footer scroll in digitize
   if (m==="study"){ refreshSelectors(); rebuildStages(); }
+  if (m==="dig"){ sizeDigLayout(); requestAnimationFrame(()=>{ if (!$("digMedia").hasAttribute("hidden")){ fitMediaToStage(); zoomFit(); } }); }
 }
 $("modeStudy").addEventListener("click",()=>setMode("study"));
 $("modeDigitize").addEventListener("click",()=>setMode("dig"));
+window.addEventListener("resize",()=>{ sizeDigLayout(); if(!$("digMain").hidden && !$("digMedia").hasAttribute("hidden")){ fitMediaToStage(); redrawOverlay(); } });
+sizeDigLayout();
 
 /* ---------- tour driver-speed reference chart ---------- */
 function buildSpeedChart(){

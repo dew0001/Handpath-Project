@@ -39,12 +39,17 @@ hands / lead hip / lead shoulder / head across the swing, and heuristically tags
 **P1–P10**. (No install — the model streams from a CDN on first use; needs an
 internet connection. Offline or batch work → use the Python pipeline below.)
 
-Then **correct what the AI got wrong**: step frame-by-frame or **jump to any P
-position**, and **drag any dot to fix it** — AI-placed points show a dashed ring
-until you touch them, so you can see exactly what's machine-guessed vs.
-hand-corrected. Delete individual points or whole frames, add the clubhead
-manually (pose models don't see the club), and re-tag P positions. Full manual
-tracking (3-click calibrate + click each point) is always available too.
+Then **correct what the AI got wrong**. The whole digitizer fits on one screen —
+no scrolling — with the point picker, **P1–P10 jump bar**, frame stepper, and
+zoom controls always in view. **Zoom** (scroll wheel or +/−) right into the
+footage to place dots precisely; a dot stays locked to the exact pixel you put it
+on when you zoom back out. **Pan** with the ✋ button or by holding space.
+**Drag any dot to fix it** — AI-placed points show a dashed ring until you touch
+them, so you see machine-guess vs. hand-corrected at a glance. Delete a point by
+clicking it then pressing Delete (or Alt-/double-click); delete whole frames from
+the list. Add the clubhead manually (pose models don't see the club) and re-tag P
+positions. Full manual tracking (3-click calibrate + click each point) is always
+available too.
 
 **The video is stored with the swing** (IndexedDB), so Study mode overlays your
 traced path directly on the footage, scrubber-synced — toggle "Video overlay" in
