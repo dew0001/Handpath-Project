@@ -780,8 +780,10 @@ function drawGrid(svg, view){
   if ($("tglGrid").checked){
     for (let gx=xmin; gx<=xmax; gx+=GRID_STEP){
       const major = gx%12===0, zero = gx===0;
+      if (zero)   // dark halo keeps the white centerline visible on light stages too
+        el("line",{x1:toX(gx),y1:toY(ytop),x2:toX(gx),y2:toY(0),stroke:"rgba(0,0,0,.45)","stroke-width":3},g);
       el("line",{x1:toX(gx),y1:toY(ytop),x2:toX(gx),y2:toY(0),
-        stroke:zero?"var(--grid-major)":"var(--grid)","stroke-width":zero?1.6:1,opacity:major?1:.55},g);
+        stroke:zero?"#FFFFFF":"var(--grid)","stroke-width":zero?1.6:1,opacity:major?1:.55},g);
       if (major && gx!==0 && Math.abs(gx)<=Math.max(-xmin,xmax)-6){          // x value labels along the bottom
         const t=el("text",{x:toX(gx),y:toY(0)+13,"text-anchor":"middle","font-size":8.5,fill:"var(--muted)"},g);
         t.textContent = (gx>0?"+":"")+gx;
@@ -798,11 +800,12 @@ function drawGrid(svg, view){
     }
   } else {
     el("line",{x1:14,y1:toY(0),x2:W-14,y2:toY(0),stroke:"var(--ground)","stroke-width":1.6},g);
-    el("line",{x1:toX(0),y1:toY(ytop),x2:toX(0),y2:toY(0),stroke:"var(--grid-major)","stroke-width":1.4},g);
+    el("line",{x1:toX(0),y1:toY(ytop),x2:toX(0),y2:toY(0),stroke:"rgba(0,0,0,.45)","stroke-width":2.8},g);
+    el("line",{x1:toX(0),y1:toY(ytop),x2:toX(0),y2:toY(0),stroke:"#FFFFFF","stroke-width":1.4},g);
   }
-  // axis labels: x = 0 centerline, and the x-axis meaning
-  const zlab = el("text",{x:toX(0),y:toY(0)+26,"text-anchor":"middle","font-size":10,"font-weight":"600",fill:"var(--muted)"},g);
-  zlab.textContent = view==="face" ? "x = 0 (body center)" : "x = 0 (body)";
+  // axis labels: the 0 centerline tick, and the x-axis meaning
+  const zlab = el("text",{x:toX(0),y:toY(0)+13,"text-anchor":"middle","font-size":8.5,fill:"var(--muted)"},g);
+  zlab.textContent = "0";
   const ax = el("text",{x:toX(0),y:20,"text-anchor":"middle","font-size":9,fill:"var(--muted)"},g);
   ax.textContent = view==="face" ? "x = inches from body center  ·  y = inches above ground" : "x = depth (inches toward ball)  ·  y = inches above ground";
   if (view==="face"){
@@ -879,14 +882,16 @@ function renderSwingInto(svg, view, comp, opts){
       el("circle",{cx:toX(ax),cy:toY(a.h[1]),r:2,fill:"none",stroke:"var(--muted)","stroke-width":1,opacity:.7},g);
     }
   }
-  // P markers on the path
-  if (S.phase[0]!=null){
-    for (let p=1;p<=10;p++){
-      const i = S.phase.findIndex(v=>v>=p);
-      if (i<0 || HX[i]==null) continue;
-      el("circle",{cx:toX(HX[i]),cy:toY(S.hy[i]),r:2.6,fill:"var(--stage)",stroke:"var(--muted)","stroke-width":1.2},g);
-      const t = el("text",{x:toX(HX[i])+5,y:toY(S.hy[i])-5,"font-size":9,fill:"var(--muted)"},g);
-      t.textContent="P"+p;
+  // P markers at the exact tagged anchors (same frames you tagged in Digitize)
+  if (comp.sw.anchors){
+    const seen=new Set();
+    for (const a of comp.sw.anchors){
+      if (!a.p || seen.has(a.p)) continue; seen.add(a.p);
+      const ax = view==="face" ? a.h[0] : (a.h[2]!=null ? a.h[2] : (capView==="dtl" ? a.h[0] : null));
+      if (ax==null) continue;
+      el("circle",{cx:toX(ax),cy:toY(a.h[1]),r:2.6,fill:"var(--stage)",stroke:"var(--muted)","stroke-width":1.2},g);
+      const t = el("text",{x:toX(ax)+5,y:toY(a.h[1])-5,"font-size":9,fill:"var(--muted)"},g);
+      t.textContent="P"+a.p;
     }
   }
 }
@@ -1010,10 +1015,11 @@ function insertVideoGroup(svg, view){
   fo.appendChild(studyVid.el);
   svg.insertBefore(g, svg.firstChild);   // behind everything
 }
-function syncStudyVideo(comp,i){
+function syncStudyVideo(comp,pos){
   if (!studyVid || !studyVid.ready) return;
-  const t = (studyVid.cal.vidT0||0) + comp.S.t[i];
-  if (Math.abs(studyVid.el.currentTime - t) > 0.02){
+  const {S}=comp;
+  const t = (studyVid.cal.vidT0||0) + S.t[0] + pos*(S.t[DENSE-1]-S.t[0]);  // exact time, not nearest sample
+  if (Math.abs(studyVid.el.currentTime - t) > 0.005){
     try { studyVid.el.currentTime = t; } catch(_){}
   }
 }
@@ -1077,7 +1083,7 @@ function updateDynamic(){
   if (!comp) return;
   const i = sampleIndex(comp, study.pos);
   const { S } = comp;
-  syncStudyVideo(comp, i);
+  syncStudyVideo(comp, study.pos);
   for (const view of ["face","dtl"]){
     const g = dyn[view]; if (!g) continue;
     g.textContent = "";
@@ -1122,17 +1128,18 @@ function updateImpactStats(){
 function buildPTrack(){
   const comp = compiled(study.primary);
   const tr = $("ptrack"); tr.textContent = "";
-  if (!comp || comp.S.phase[0]==null) return;
+  if (!comp) return;
   const { S } = comp;
   const t0=S.t[0], t1=S.t[DENSE-1];
-  for (let p=1;p<=10;p++){
-    const i = S.phase.findIndex(v=>v>=p);
-    if (i<0) continue;
-    const frac = (S.t[i]-t0)/(t1-t0);
+  if (t1<=t0) return;
+  const seen=new Set();
+  for (const a of comp.sw.anchors){                     // exact tagged frames, no resample drift
+    if (!a.p || seen.has(a.p)) continue; seen.add(a.p);
+    const frac = (a.t-t0)/(t1-t0);
     const pos = `calc(7px + ${frac} * (100% - 14px))`;   // inset by thumb radius to match slider travel
     const tick = document.createElement("span"); tick.className="tick"; tick.style.left=pos; tr.appendChild(tick);
     const lb = document.createElement("span"); lb.className="ticklabel mono"; lb.style.left=pos;
-    lb.textContent="P"+p; lb.title=PHASES[p-1][1];
+    lb.textContent="P"+a.p; lb.title=PHASES[a.p-1][1];
     lb.addEventListener("click",()=>{ study.pos=frac; stopPlay(); updateDynamic(); });
     tr.appendChild(lb);
   }
@@ -2172,9 +2179,9 @@ function insertVideoRec(target, rec, view){
 function syncCmpVideo(slot){
   const rec=cmp.vids[slot]; if(!rec||!rec.ready) return;
   const comp=compiled(slotSwingId(slot)); if(!comp) return;
-  const i=sampleIndex(comp, slotPos(slot));
-  const t=(rec.cal.vidT0||0)+comp.S.t[i];
-  if(Math.abs(rec.el.currentTime-t)>0.02){ try{rec.el.currentTime=t;}catch(_){} }
+  const {S}=comp;
+  const t=(rec.cal.vidT0||0)+S.t[0]+slotPos(slot)*(S.t[DENSE-1]-S.t[0]);  // exact time, not nearest sample
+  if(Math.abs(rec.el.currentTime-t)>0.005){ try{rec.el.currentTime=t;}catch(_){} }
 }
 // screen bbox of a swing's hand+club path in a given view, after the slot's xform
 function swingScreenBox(comp, view, xf){
@@ -2290,12 +2297,13 @@ function buildCmpScrubber(slot){
   const wrap=document.createElement("div"); wrap.className="cmp-scrub";
   const pj=document.createElement("div"); pj.className="pj";
   const rng=document.createElement("input"); rng.type="range"; rng.min=0; rng.max=1000; rng.step=1; rng.value=Math.round(slotPos(slot)*1000);
-  if (comp && comp.S.phase[0]!=null){
+  if (comp){
     const t0=comp.S.t[0], t1=comp.S.t[DENSE-1];
-    for (let p=1;p<=10;p++){
-      const idx=comp.S.phase.findIndex(v=>v>=p); if(idx<0) continue;
-      const frac=(comp.S.t[idx]-t0)/(t1-t0);
-      const b=document.createElement("button"); b.textContent="P"+p; b.title=PHASES[p-1][1];
+    const seen=new Set();
+    if (t1>t0) for (const a of comp.sw.anchors){         // exact tagged frames, no resample drift
+      if (!a.p || seen.has(a.p)) continue; seen.add(a.p);
+      const frac=(a.t-t0)/(t1-t0);
+      const b=document.createElement("button"); b.textContent="P"+a.p; b.title=PHASES[a.p-1][1];
       b.addEventListener("click",()=>{ setSlotPos(slot,frac); rng.value=Math.round(frac*1000); drawCmpSlot(slot); });
       pj.appendChild(b);
     }
