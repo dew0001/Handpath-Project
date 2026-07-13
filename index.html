@@ -1,5 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <title>Handpath Lab — Swing Study Instrument</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Golf swing study tool: hand path and club path in face-on and down-the-line views, P1–P10 playback, video digitizer, and AI-pipeline import.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛳</text></svg>">
 <style>
 /* ---------- design tokens ---------- */
 :root{
@@ -152,6 +158,8 @@ table.datatable th{color:var(--muted);font-weight:600}
 footer.app{padding:14px 20px 26px;max-width:1480px;margin:0 auto;color:var(--muted);font-size:12px}
 footer.app a{color:var(--accent)}
 </style>
+</head>
+<body>
 
 <header class="app">
   <div class="wordmark">
@@ -1355,3 +1363,5 @@ $("modeDigitize").addEventListener("click",()=>setMode("dig"));
 refreshSelectors();
 rebuildStages();
 </script>
+</body>
+</html>

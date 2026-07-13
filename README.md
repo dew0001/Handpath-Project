@@ -4,8 +4,10 @@ A swing-study instrument: interactive visualization of where a golfer's hands
 and clubhead travel through the entire swing, in real inches, tracked against
 the P-system (P1 Address → P10 Finish), with face-on **and** down-the-line views.
 
-**Main app: [`swing-lab.html`](swing-lab.html)** — a single self-contained file,
-no dependencies. Open it in any browser, or publish it as a Claude artifact to share.
+**Live app: <https://dew0001.github.io/Handpath-Project/>** (deploys automatically
+from [`index.html`](index.html) via GitHub Actions — see `.github/workflows/pages.yml`).
+The app is a single self-contained file with no dependencies; it also runs by just
+opening `index.html` in any browser.
 
 ## Coordinate system
 
