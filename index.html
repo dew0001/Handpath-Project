@@ -975,7 +975,7 @@ const dyn = { face:null, dtl:null, faceBack:null, dtlBack:null };
 let studyVid = null;   // { id, el, url, cal, ready }
 function videoSwing(){
   const sw = swingById(study.primary);
-  return (sw && sw.hasVideo && sw.cal && sw.view==="face") ? sw : null;
+  return (sw && sw.hasVideo && sw.cal) ? sw : null;
 }
 function ensureStudyVideo(){
   const want = $("tglVideo").checked ? videoSwing() : null;
@@ -997,13 +997,14 @@ function teardownStudyVideo(){
   if (studyVid && studyVid.url) URL.revokeObjectURL(studyVid.url);
   studyVid=null;
 }
-function insertVideoGroup(svg){
+function insertVideoGroup(svg, view){
   if (!studyVid || !studyVid.ready) return;
   const sw = swingById(study.primary);
-  if (!sw || sw.id!==studyVid.id) return;
+  if (!sw || sw.id!==studyVid.id || sw.view!==view) return;
+  const T = view==="face"?FACE:DTL;
   const {pxPerIn,groundY,centerX,dir,vidW,vidH}=studyVid.cal;
-  const a=dir*FACE.s/pxPerIn, d=FACE.s/pxPerIn;
-  const e=FACE.cx - a*centerX, f=FACE.groundY - d*groundY;
+  const a=dir*T.s/pxPerIn, d=T.s/pxPerIn;
+  const e=T.cx - a*centerX, f=T.groundY - d*groundY;
   const g=el("g",{transform:`matrix(${a} 0 0 ${d} ${e} ${f})`, opacity:0.6},svg);
   const fo=el("foreignObject",{x:0,y:0,width:vidW,height:vidH},g);
   fo.appendChild(studyVid.el);
@@ -1024,7 +1025,7 @@ function rebuildStages(){
     const svg = $(svgId);
     svg.textContent = "";
     drawGrid(svg, view);
-    if (view==="face") insertVideoGroup(svg);           // digitized footage, behind grid+paths
+    insertVideoGroup(svg, view);                        // digitized footage, behind grid+paths
     if (pv) drawBallAndPlane(svg, view, pv);
     dyn[view+"Back"] = el("g",{class:"dynback"},svg);   // golfer skeleton, under paths
     // overlays first (under primary)
@@ -1044,6 +1045,14 @@ function rebuildStages(){
       t1.textContent="No swings yet";
       const t2=el("text",{x:W/2,y:224,"text-anchor":"middle","font-size":12,fill:"var(--muted)"},svg);
       t2.textContent="Capture one in Digitize mode — then it shows up here.";
+    } else if (pv && !pv.has3d && pv.sw.view!==view){
+      const W = view==="face"?FACE.w:DTL.w;
+      const capName = pv.sw.view==="dtl"?"down-the-line":"face-on";
+      const thisName = view==="dtl"?"down-the-line":"face-on";
+      const t1=el("text",{x:W/2,y:200,"text-anchor":"middle","font-size":13,"font-weight":"600",fill:"var(--muted)"},svg);
+      t1.textContent=`This swing is a ${capName} capture`;
+      const t2=el("text",{x:W/2,y:222,"text-anchor":"middle","font-size":11.5,fill:"var(--muted)"},svg);
+      t2.textContent=`Digitize a ${thisName} video of the same swing to see it here.`;
     }
     dyn[view] = el("g",{class:"dyn"},svg);
     svg.dataset.annoKey = view;
@@ -1329,6 +1338,7 @@ $("importFile").addEventListener("change",async e=>{
       savedPlayers.push(p); added++;
     };
     if (j.app==="handpath-lab" && Array.isArray(j.players)) j.players.forEach(take);
+    else if (j.app==="handpath-lab-project"){ const p=await projectToPlayer(j); if(p){ savedPlayers.push(p); added++; } }
     else if (j.source==="track_swing" || (j.anchors && j.view)) take(normalizePipeline(j));
     else if (Array.isArray(j)) j.forEach(take);
     else throw new Error("Unrecognized format");
@@ -1338,6 +1348,38 @@ $("importFile").addEventListener("change",async e=>{
   }catch(err){ toast("Import failed: "+err.message); }
   e.target.value="";
 });
+/* editable project (.handpath.json) -> player, same conversion Digitize's Save does.
+   Lets Study's Import JSON take project files directly (video included when present). */
+async function projectToPlayer(j){
+  const cal=j.cal, meta=j.meta||{};
+  if (!cal || !Array.isArray(j.frames)) throw new Error("project has no calibration/frames");
+  const dir=meta.dir||1;
+  const frames=j.frames.filter(f=>f.pts && f.pts.h).sort((a,b)=>a.tMs-b.tMs);
+  if (frames.length<2) throw new Error("project has too few tracked frames");
+  const {pxPerIn,groundY,centerX}=cal;
+  const toWorld=(p)=>[dir*(p[0]-centerX)/pxPerIn, (groundY-p[1])/pxPerIn];
+  const t0=frames[0].tMs;
+  const anchors=frames.map(f=>{
+    const [x,y]=toWorld(f.pts.h);
+    const a={t:(f.tMs-t0)/1000, p:f.p||0, h:[x,y,null]};
+    if (f.ref) a.ref=true;
+    if (f.pts.c){ const [cx0,cy0]=toWorld(f.pts.c); a.c=[cx0,cy0,null]; }
+    for (const k of ["hip","sh","head"]) if (f.pts[k]) a[k]=toWorld(f.pts[k]);
+    return a;
+  });
+  const id="d"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);
+  const player={ id, name: meta.name||"Imported project", club: meta.club||"Other",
+    view: meta.view==="dtl"?"dtl":"face", source:"project import", height: meta.height||71, anchors };
+  if (j.video && j.vidW && j.vidH){
+    player.cal={ pxPerIn, groundY, centerX, dir, vidW:j.vidW, vidH:j.vidH, vidT0:t0/1000 };
+    try{
+      const blob=await (await fetch(j.video)).blob();
+      const ok=await idbVideo("put", id, blob);
+      player.hasVideo=!!ok;
+    }catch(_){ player.hasVideo=false; }
+  }
+  return player;
+}
 /* pipeline JSON -> player */
 function normalizePipeline(j){
   return {
@@ -1418,7 +1460,8 @@ $("videoFile").addEventListener("change",e=>{
   v.src=URL.createObjectURL(f); v.hidden=false; $("digImage").hidden=true; $("digEmpty").hidden=true;
   $("digMedia").removeAttribute("hidden");
   dig.media=v; dig.kind="video"; dig.videoFile=f;
-  v.addEventListener("loadedmetadata",()=>{ setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000); },{once:true});
+  $("digName").value = f.name.replace(/\.[^.]+$/,"");
+  v.addEventListener("loadedmetadata",()=>{ setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000); detectFps(v); },{once:true});
   resetCapture();
 });
 $("imageFile").addEventListener("change",e=>{
@@ -1490,6 +1533,38 @@ $("btnPan").addEventListener("click",()=>{
   panMode=!panMode; $("btnPan").setAttribute("aria-pressed",String(panMode));
   $("digStage").classList.toggle("panning",panMode);
 });
+
+/* estimate the source frame rate from decoded-frame timestamps; snaps to common rates.
+   Silent fallback — the fps field stays user-editable either way. */
+function detectFps(v){
+  if (!v.requestVideoFrameCallback) return;
+  const deltas=[]; let last=null, done=false;
+  const finish=()=>{
+    if (done) return; done=true;
+    try{ v.pause(); v.currentTime=0; }catch(_){}
+    if (deltas.length>=4){
+      deltas.sort((a,b)=>a-b);
+      const med=deltas[Math.floor(deltas.length/2)];
+      if (med>0){
+        const raw=1/med, common=[24,25,30,50,60,120,240];
+        let best=common[0]; for(const c of common) if(Math.abs(c-raw)<Math.abs(best-raw)) best=c;
+        if (Math.abs(best-raw)/best<=0.15 && +$("digFps").value!==best){
+          $("digFps").value=best; toast(`Frame rate detected: ${best} fps`);
+        }
+      }
+    }
+  };
+  const tick=(_,meta)=>{
+    if (done) return;
+    if (last!=null && meta.mediaTime>last) deltas.push(meta.mediaTime-last);
+    last=meta.mediaTime;
+    if (deltas.length>=12) finish(); else v.requestVideoFrameCallback(tick);
+  };
+  v.muted=true;
+  const p=v.play(); if (p&&p.catch) p.catch(()=>{});
+  v.requestVideoFrameCallback(tick);
+  setTimeout(finish, 1500);
+}
 
 /* frame nav */
 function digStep(n){
@@ -1688,7 +1763,7 @@ function redrawOverlay(){
 function renderFrames(){
   const list=$("framesList"); list.textContent="";
   const times=[...dig.frames.keys()].sort((a,b)=>a-b);
-  if (!times.length){ list.innerHTML='<p class="hint">No frames yet.</p>'; return; }
+  if (!times.length){ list.innerHTML='<p class="hint">No frames yet.</p>'; buildPNav(); return; }
   const curMs = digCurMs();
   for (const t of times){
     const fr=dig.frames.get(t);
@@ -1739,7 +1814,8 @@ $("btnSavePlayer").addEventListener("click",()=>{
   const player={
     id,
     name, club:$("digClub").value, view,
-    source:"manual digitize", height:parseFloat($("digHeight").value)||71,
+    source: [...dig.frames.values()].some(f=>f.ai&&f.ai.size) ? "auto-track (AI)" : "manual digitize",
+    height:parseFloat($("digHeight").value)||71,
     anchors,
   };
   // store calibration + video so Study mode can overlay the path on the footage
@@ -1763,6 +1839,7 @@ $("btnSavePlayer").addEventListener("click",()=>{
 const LM = { NOSE:0, L_SH:11, R_SH:12, L_WR:15, R_WR:16, L_HIP:23, R_HIP:24, L_ANK:27, R_ANK:28 };
 const NOSE_TO_ANKLE = 0.89;   // nose height ÷ standing height (matches pipeline)
 let _poseLandmarker = null, _poseLoading = null;
+let _poseTs = 0;   // VIDEO-mode landmarker needs strictly increasing timestamps for its whole lifetime
 
 async function loadPoseLandmarker(){
   if (_poseLandmarker) return _poseLandmarker;
@@ -1808,13 +1885,12 @@ async function runAutoTrack(){
   const total=Math.floor(dur*fps);
   const step=Math.max(1, Math.ceil(total/120));      // cap ~120 samples
   const perFrame=[];
-  let ts=0;
   for (let fr=0; fr<total; fr+=step){
     const t=Math.min(dur-1e-3, fr/fps);
     await seekTo(v, t);
-    ts += 33;                                          // strictly increasing timestamp for the VIDEO runner
+    _poseTs += 33;                                     // never reset — the runner rejects timestamps in its past
     let res;
-    try { res = landmarker.detectForVideo(v, ts); } catch(e){ continue; }
+    try { res = landmarker.detectForVideo(v, _poseTs); } catch(e){ continue; }
     if (res && res.landmarks && res.landmarks[0]) perFrame.push({ t, lm: res.landmarks[0] });
     const p=Math.min(0.95, fr/total);
     bar.style.width=(6+p*90)+"%";
@@ -1829,7 +1905,7 @@ async function runAutoTrack(){
   applyPoseResults(perFrame);
   prog.style.display="none";
   if (wasPlaying) {} // leave paused for review
-  toast(`AI tracked ${perFrame.length} frames — step through and drag any dot to correct.`);
+  toast(`AI tracked ${dig.frames.size} usable frames — step through and drag any dot to correct.`);
 }
 
 /* Pure: pixel landmarks -> dig.frames + dig.cal + P tags. */
@@ -1859,11 +1935,12 @@ function applyPoseResults(perFrame){
   // fill frames (all points flagged AI until corrected)
   dig.frames.clear(); dig.clicks=[];
   for (const {t,lm} of perFrame){
-    if (!(vis(lm,LM.L_WR)&&vis(lm,LM.R_WR))) continue;
+    const hasL=vis(lm,LM.L_WR), hasR=vis(lm,LM.R_WR);
+    if (!hasL && !hasR) continue;      // one visible wrist is enough (the other is often occluded, esp. DTL)
     const tMs=Math.round(t*1000);
     const pts={}, ai=new Set();
-    const wl=px(lm,LM.L_WR), wr=px(lm,LM.R_WR);
-    pts.h=[(wl[0]+wr[0])/2,(wl[1]+wr[1])/2]; ai.add("h");
+    const wl=hasL?px(lm,LM.L_WR):null, wr=hasR?px(lm,LM.R_WR):null;
+    pts.h = (wl&&wr) ? [(wl[0]+wr[0])/2,(wl[1]+wr[1])/2] : (wl||wr).slice(); ai.add("h");
     if (vis(lm,LM.L_HIP)){ pts.hip=px(lm,LM.L_HIP); ai.add("hip"); }
     if (vis(lm,LM.L_SH)){ pts.sh=px(lm,LM.L_SH); ai.add("sh"); }
     if (vis(lm,LM.NOSE)){ pts.head=px(lm,LM.NOSE); ai.add("head"); }
