@@ -111,14 +111,16 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 .stagebox.drawing svg{cursor:crosshair}
 /* compare mode */
 #compareWrap{display:flex;flex-direction:column;gap:14px}
-#compareWrap.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media (max-width:1000px){ #compareWrap.cols{grid-template-columns:1fr} }
+#compareWrap.cols{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;justify-content:center}
 .cmp-slot{display:flex;flex-direction:column;gap:8px;min-width:0}
 .cmp-slot .cmp-head{font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px}
 .cmp-slot .cmp-head .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent);border-radius:4px;padding:1px 6px}
-.cmp-panels{display:grid;gap:10px}
-.cmp-panel{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;min-width:0;overflow:hidden}
+.cmp-panels{display:flex;flex-wrap:wrap;gap:10px}
+/* each comparison window is drag-resizable (handle at bottom-right); the slider sets the default */
+.cmp-panel{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;overflow:hidden;
+  width:var(--cmp-w,460px);min-width:220px;max-width:94vw;resize:horizontal}
 .cmp-panel svg{display:block;width:100%;height:auto}
+.cmp-panel::after{content:"⤡";position:absolute;right:3px;bottom:1px;font-size:11px;color:var(--muted);pointer-events:none;opacity:.6}
 .cmp-scrub{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;flex-wrap:wrap}
 .cmp-scrub input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
 .cmp-scrub .pj{display:flex;gap:3px;flex-wrap:wrap}
@@ -247,6 +249,8 @@ footer.app a{color:var(--accent)}
         <label class="row" style="gap:6px"><input type="checkbox" id="tglCompare"> Compare two swings</label>
         <select id="compareSel" aria-label="Second swing" disabled></select>
         <label class="row" style="gap:6px"><input type="checkbox" id="tglGhost" disabled> Ghost overlay (superimpose A + B)</label>
+        <label class="row" style="gap:6px;font-size:12px">Window size <input type="range" id="cmpSize" min="300" max="820" step="10" value="460" style="flex:1"></label>
+        <p class="hint" style="margin:0">…or drag the ⤡ corner of any window to resize it.</p>
         <div id="resizeControls" class="stack" hidden>
           <p class="hint" style="margin:0">Match golfer size/position (per swing):</p>
           <label class="row" style="gap:6px;font-size:12px">A size <input type="range" id="axScale" min="0.6" max="1.6" step="0.01" value="1" style="flex:1"></label>
@@ -2139,16 +2143,22 @@ function drawGhostView(view){
     maxx:Math.max(...boxes.map(b=>b.maxx)),maxy:Math.max(...boxes.map(b=>b.maxy))},T); }
   svg.setAttribute("viewBox",vb);
   drawGrid(svg,view);
+  // both videos first, behind everything, so both paths stay visible on top
+  if ($("tglVideo").checked){
+    if(cA){ const vg=xformGroup(svg,view,cmp.xf.A); insertVideoRec(vg,cmp.vids.A,view); }
+    if(cB){ const vg=xformGroup(svg,view,cmp.xf.B); vg.setAttribute("opacity","0.5"); insertVideoRec(vg,cmp.vids.B,view); }
+  }
   if(cA){ const xg=xformGroup(svg,view,cmp.xf.A);
     renderSwingInto(xg,view,cA,{club:$("tglClub").checked,velocity:false});
     drawPosRing(xg,cA,view,cmp.posA,"var(--c-down)"); }
-  if(cB){ const xg=xformGroup(svg,view,cmp.xf.B); xg.setAttribute("opacity","0.55");
+  if(cB){ const xg=xformGroup(svg,view,cmp.xf.B); xg.setAttribute("opacity","0.72");
     renderSwingInto(xg,view,cB,{overlayColor:"var(--c-ov1)"});
     drawPosRing(xg,cB,view,cmp.posB,"var(--c-ov1)"); }
 }
 function drawGhostAll(){
   const views=study.view==="both"?["face","dtl"]:[study.view];
   for(const v of views) drawGhostView(v);
+  syncCmpVideo("A"); syncCmpVideo("B");
   updateCmpPhase("A"); updateCmpPhase("B");
 }
 function drawPosRing(g, comp, view, pos, color){
@@ -2202,7 +2212,6 @@ function renderCompare(){
       `<span><span class="tag" style="background:var(--c-ov1)">B</span> ${swB?swB.name+" (ghost)":"—"}</span>`;
     wrap.appendChild(leg);
     const panels=document.createElement("div"); panels.className="cmp-panels";
-    panels.style.gridTemplateColumns = views.length>1?"1fr 1fr":"1fr";
     for (const v of views){
       const panel=document.createElement("div"); panel.className="cmp-panel";
       const lbl=document.createElement("span"); lbl.className="stagelabel"; lbl.textContent=v==="face"?"Face-on":"Down-the-line";
@@ -2225,7 +2234,6 @@ function renderCompare(){
     hd.innerHTML=`<span class="tag">${slot}</span> ${sw?sw.name:"— pick a swing —"}`;
     slotEl.appendChild(hd);
     const panels=document.createElement("div"); panels.className="cmp-panels";
-    panels.style.gridTemplateColumns = views.length>1?"1fr 1fr":"1fr";
     for (const v of views){
       const panel=document.createElement("div"); panel.className="cmp-panel";
       const lbl=document.createElement("span"); lbl.className="stagelabel"; lbl.textContent=v==="face"?"Face-on":"Down-the-line";
@@ -2257,6 +2265,7 @@ function setCompare(on){
 }
 $("tglCompare").addEventListener("change",e=>setCompare(e.target.checked));
 $("tglGhost").addEventListener("change",e=>{ cmp.ghost=e.target.checked; renderCompare(); });
+$("cmpSize").addEventListener("input",e=>{ document.documentElement.style.setProperty("--cmp-w", e.target.value+"px"); });
 $("compareSel").addEventListener("change",e=>{ cmp.B=e.target.value||null; $("resizeControls").hidden=!cmp.B; renderCompare(); });
 $("btnResizeReset").addEventListener("click",()=>{
   cmp.xf.A={s:1,dy:0}; cmp.xf.B={s:1,dy:0};
