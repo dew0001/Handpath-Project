@@ -212,6 +212,12 @@ footer.app a{color:var(--accent)}
     </div>
 
     <div class="panel">
+      <h3>Checkpoints vs. tour average</h3>
+      <div id="checkpointBox"></div>
+      <p class="hint" style="margin:8px 0 0">Published tour-average bands (see <span class="mono">RESEARCH.md</span>). Bands are ranges across pros, not per-player data.</p>
+    </div>
+
+    <div class="panel">
       <h3>Library</h3>
       <div id="playersList"></div>
       <div class="row" style="margin-top:8px">
@@ -613,6 +619,55 @@ function compileSwing(sw){
 /* =================================================================
    Library (models + saved players)
    ================================================================= */
+/* =================================================================
+   RESEARCHED REFERENCE DATA (see RESEARCH.md for full citations).
+   Tour-average BANDS, not fabricated per-player curves. Every value here
+   traces to a published source; coaching-org values flagged medium-confidence.
+   ================================================================= */
+const TOUR_REF = {
+  // [P-position]: { metric: [lo, hi, source] }
+  bands: [
+    { p:4, label:"Top of backswing", rows:[
+      ["Pelvis (hip) turn", 40, 50, "TPI (~45° tour avg)"],
+      ["Shoulder (thorax) turn", 85, 95, "TPI (~90°)"],
+      ["X-Factor separation", 40, 50, "TPI / Meister 2011"],
+    ]},
+    { p:7, label:"Impact", rows:[
+      ["Pelvis open to target", 20, 45, "3D research summary"],
+      ["Thorax near square", -5, 20, "GolfWRX / 3D"],
+    ]},
+  ],
+  tempo: "≈ 3 : 1 backswing:downswing (Tour Tempo)",
+  impact: {
+    "7-iron": "Tour avg: ~90–92 mph · AoA ~ −4° (TrackMan)",
+    "Driver": "Tour avg: ~113–115 mph · AoA −1.3°…−0.9° (TrackMan)",
+  },
+  note: "Bands are published tour-average ranges, not per-player measurements. Sources in RESEARCH.md.",
+};
+
+// The only named pros in the 30 with REAL published quantitative swing data.
+const PLAYER_PROFILES = {
+  "Rory McIlroy": {
+    club:"Driver", source:"GEARS 3D via Golf.com/TaylorMade 2019 (approx.)",
+    rows:[
+      ["Hip turn at top (P4)", "≈42°"],
+      ["Shoulder turn at top (P4)", "≈116°"],
+      ["X-Factor at top", "≈75° (outlier — tour avg ~45°)"],
+      ["Shoulders P4→P7", "114° closed → 35° open"],
+      ["Hips unwind top→impact", ">100°"],
+      ["Peak pelvis velocity", "≈720°/s (tour avg ~500)"],
+      ["Driver clubhead speed", "up to ≈122 mph"],
+    ],
+  },
+  "Jon Rahm": {
+    club:"Driver", source:"TrackMan Golf blog (primary)",
+    rows:[
+      ["Driver attack angle", "+5.2° (steep up)"],
+      ["Club path (6-iron)", "slightly left"],
+    ],
+  },
+};
+
 const LS_KEY = "handpathlab.players.v1";
 function loadSaved(){
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e){ return []; }
@@ -910,6 +965,62 @@ function updateDynamic(){
     $("phaseDesc").textContent = "No P tags on this capture — add them in Digitize mode.";
   }
   $("scrub").value = Math.round(study.pos*1000);
+  updateCheckpoints();
+}
+
+function updateCheckpoints(){
+  const box = $("checkpointBox"); if (!box) return;
+  const comp = compiled(study.primary);
+  box.textContent = "";
+
+  // real per-player profile card, if this swing's name matches a researched player
+  if (comp){
+    const nm = Object.keys(PLAYER_PROFILES).find(k => comp.sw.name.includes(k));
+    if (nm){
+      const pr = PLAYER_PROFILES[nm];
+      const card = document.createElement("div");
+      card.style.cssText = "border:1px solid var(--accent);border-radius:6px;padding:6px 8px;margin-bottom:8px";
+      let h = `<div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);font-weight:700">${nm} · measured</div>`;
+      for (const [k,v] of pr.rows) h += `<div class="row" style="justify-content:space-between;gap:8px"><span class="hint">${k}</span><span class="mono">${v}</span></div>`;
+      h += `<div class="hint" style="margin-top:4px;font-size:11px">source: ${pr.source}</div>`;
+      card.innerHTML = h; box.appendChild(card);
+    }
+  }
+
+  // current-phase band comparison for models with body data
+  if (!comp || !comp.hasBody || comp.S.phase[0]==null){
+    const d=document.createElement("p"); d.className="hint"; d.style.margin="0";
+    d.textContent = "Body-angle bands show for model swings with hip/shoulder data. Tempo ≈ 3:1 (Tour Tempo).";
+    box.appendChild(d); return;
+  }
+  const i = sampleIndex(comp, study.pos);
+  const curP = Math.max(1, Math.min(10, Math.round(comp.S.phase[i]||1)));
+  const band = TOUR_REF.bands.find(b => b.p===curP);
+
+  const hdr = document.createElement("div");
+  hdr.className = "hint"; hdr.style.marginBottom = "6px";
+  hdr.innerHTML = band ? `At <b>P${curP} · ${band.label}</b> — model vs tour band:` :
+    `Scrub to <b>P4</b> (top) or <b>P7</b> (impact) to compare against tour-average bands.`;
+  box.appendChild(hdr);
+
+  if (band){
+    const hipT = Math.abs(comp.S.hipT[i]||0), shT = Math.abs(comp.S.shT[i]||0), xf = shT - hipT;
+    const modelVals = { "Pelvis (hip) turn":hipT, "Shoulder (thorax) turn":shT, "X-Factor separation":xf,
+                        "Pelvis open to target":hipT, "Thorax near square":shT };
+    const t = document.createElement("table"); t.className="datatable"; t.style.width="100%";
+    t.innerHTML = "<tr><th style='text-align:left'>metric</th><th>model</th><th>tour band</th></tr>";
+    for (const [metric, lo, hi, src] of band.rows){
+      const mv = modelVals[metric];
+      const inBand = mv!=null && mv>=lo && mv<=hi;
+      const color = inBand ? "var(--accent)" : "var(--c-down)";
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td style="text-align:left" title="${src}">${metric}</td>`+
+        `<td class="mono" style="color:${color}">${mv!=null?mv.toFixed(0)+"°":"—"}</td>`+
+        `<td class="mono hint">${lo}–${hi}°</td>`;
+      t.appendChild(tr);
+    }
+    box.appendChild(t);
+  }
 }
 
 function updateImpactStats(){
