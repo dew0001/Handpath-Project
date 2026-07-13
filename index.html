@@ -108,17 +108,18 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 .annotbar .lbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
 .annotbar input[type=color]{width:26px;height:24px;padding:0;border:1px solid var(--line);border-radius:5px;background:none;cursor:pointer}
 #annotTools button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
-.stagebox.drawing svg{cursor:crosshair}
+.stagebox.drawing svg,.cmp-panel.drawing svg{cursor:crosshair}
 /* compare mode */
 #compareWrap{display:flex;flex-direction:column;gap:14px}
-#compareWrap.cols{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;justify-content:center}
-.cmp-slot{display:flex;flex-direction:column;gap:8px;min-width:0}
+/* two swings ALWAYS side by side (no wrap); scroll horizontally if the windows grow */
+.cmp-row{display:flex;flex-direction:row;flex-wrap:nowrap;gap:14px;overflow-x:auto;align-items:flex-start;padding-bottom:6px}
+.cmp-slot{display:flex;flex-direction:column;gap:8px;flex:0 0 auto}
 .cmp-slot .cmp-head{font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px}
 .cmp-slot .cmp-head .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent);border-radius:4px;padding:1px 6px}
-.cmp-panels{display:flex;flex-wrap:wrap;gap:10px}
+.cmp-panels{display:flex;flex-direction:column;gap:10px}
 /* each comparison window is drag-resizable (handle at bottom-right); the slider sets the default */
 .cmp-panel{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;overflow:hidden;
-  width:var(--cmp-w,460px);min-width:220px;max-width:94vw;resize:horizontal}
+  width:var(--cmp-w,440px);min-width:240px;max-width:96vw;resize:horizontal}
 .cmp-panel svg{display:block;width:100%;height:auto}
 .cmp-panel::after{content:"⤡";position:absolute;right:3px;bottom:1px;font-size:11px;color:var(--muted);pointer-events:none;opacity:.6}
 .cmp-scrub{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;flex-wrap:wrap}
@@ -249,7 +250,11 @@ footer.app a{color:var(--accent)}
         <label class="row" style="gap:6px"><input type="checkbox" id="tglCompare"> Compare two swings</label>
         <select id="compareSel" aria-label="Second swing" disabled></select>
         <label class="row" style="gap:6px"><input type="checkbox" id="tglGhost" disabled> Ghost overlay (superimpose A + B)</label>
-        <label class="row" style="gap:6px;font-size:12px">Window size <input type="range" id="cmpSize" min="300" max="820" step="10" value="460" style="flex:1"></label>
+        <div id="ghostOpacity" class="stack" hidden style="gap:4px">
+          <label class="row" style="gap:6px;font-size:12px">A opacity <input type="range" id="axOp" min="0.15" max="1" step="0.05" value="0.85" style="flex:1"></label>
+          <label class="row" style="gap:6px;font-size:12px">B opacity <input type="range" id="bxOp" min="0.15" max="1" step="0.05" value="0.55" style="flex:1"></label>
+        </div>
+        <label class="row" style="gap:6px;font-size:12px">Window size <input type="range" id="cmpSize" min="300" max="900" step="10" value="440" style="flex:1"></label>
         <p class="hint" style="margin:0">…or drag the ⤡ corner of any window to resize it.</p>
         <div id="resizeControls" class="stack" hidden>
           <p class="hint" style="margin:0">Match golfer size/position (per swing):</p>
@@ -322,6 +327,7 @@ footer.app a{color:var(--accent)}
     <div class="annotbar" id="annotBar">
       <span class="lbl">Draw</span>
       <div class="kbtns" id="annotTools">
+        <button data-tool="move" title="Move / drag a shape">✥</button>
         <button data-tool="pen" title="Freehand pen">✏︎</button>
         <button data-tool="line" title="Straight line">╱</button>
         <button data-tool="arrow" title="Arrow">→</button>
@@ -1040,7 +1046,8 @@ function rebuildStages(){
       t2.textContent="Capture one in Digitize mode — then it shows up here.";
     }
     dyn[view] = el("g",{class:"dyn"},svg);
-    drawAnnotations(svg, view);          // annotation layer on top
+    svg.dataset.annoKey = view;
+    drawAnnotationsFor(svg);              // annotation layer on top
   }
   updateDynamic();
   buildPTrack();
@@ -2054,7 +2061,7 @@ sizeDigLayout();
    COMPARE MODE — two swings side by side, each with its own scrubber
    ================================================================= */
 const cmp = { on:false, ghost:false, B:null, posA:0, posB:0,
-  xf:{ A:{s:1,dy:0}, B:{s:1,dy:0} }, vids:{A:null,B:null} };
+  xf:{ A:{s:1,dy:0}, B:{s:1,dy:0} }, op:{A:0.85,B:0.55}, vids:{A:null,B:null} };
 const slotSwingId = (slot)=> slot==="A"?study.primary:cmp.B;
 const slotPos = (slot)=> slot==="A"?cmp.posA:cmp.posB;
 const setSlotPos = (slot,v)=>{ if(slot==="A") cmp.posA=v; else cmp.posB=v; };
@@ -2105,11 +2112,31 @@ function swingScreenBox(comp, view, xf){
   for (let i=0;i<DENSE;i++){ if(HX[i]!=null){ add(toX(HX[i]),toY(S.hy[i])); if(CX&&CX[i]!=null) add(toX(CX[i]),toY(S.cy[i])); } }
   return any?{minx,miny,maxx,maxy}:null;
 }
-function fitBox(bb, T){
-  const mx=(bb.maxx-bb.minx)*0.32+30, my=(bb.maxy-bb.miny)*0.22+30;
+// screen bbox of a video's frame (all four corners through the calibration matrix + xform)
+function videoScreenBox(rec, view, xf){
+  if(!rec||!rec.cal||rec.capView!==view) return null;
+  const {pxPerIn,groundY,centerX,dir,vidW,vidH}=rec.cal, T=view==="face"?FACE:DTL;
+  const a=dir*T.s/pxPerIn, d=T.s/pxPerIn, e=T.cx-a*centerX, f=T.groundY-d*groundY;
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  for (const [x,y] of [[0,0],[vidW,0],[0,vidH],[vidW,vidH]]){
+    const sx=a*x+e, sy=d*y+f, px=T.cx+xf.s*(sx-T.cx), py=T.groundY+xf.dy+xf.s*(sy-T.groundY);
+    minx=Math.min(minx,px);maxx=Math.max(maxx,px);miny=Math.min(miny,py);maxy=Math.max(maxy,py);
+  }
+  return {minx,miny,maxx,maxy};
+}
+function unionBox(a,b){ if(!a)return b; if(!b)return a;
+  return {minx:Math.min(a.minx,b.minx),miny:Math.min(a.miny,b.miny),maxx:Math.max(a.maxx,b.maxx),maxy:Math.max(a.maxy,b.maxy)}; }
+function fitBox(bb, T, mf){
+  mf = mf==null?0.15:mf;
+  const mx=(bb.maxx-bb.minx)*mf+18, my=(bb.maxy-bb.miny)*mf+18;
   let x=bb.minx-mx, y=bb.miny-my, w=(bb.maxx-bb.minx)+2*mx, h=(bb.maxy-bb.miny)+2*my;
   const ar=T.w/T.h; if (w/h<ar){ const nw=h*ar; x-=(nw-w)/2; w=nw; } else { const nh=w/ar; y-=(nh-h)/2; h=nh; }
   return `${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`;
+}
+// the region to frame: whole video when shown (so it's not cropped), else the swing path
+function fitRegion(comp, view, xf, rec){
+  if ($("tglVideo").checked && rec){ const vb=videoScreenBox(rec,view,xf); if(vb) return {box:unionBox(vb, swingScreenBox(comp,view,xf)), mf:0.04}; }
+  const pb=swingScreenBox(comp,view,xf); return {box:pb, mf:0.22};
 }
 function xformGroup(svg, view, xf){
   const T=view==="face"?FACE:DTL;
@@ -2120,14 +2147,15 @@ function drawPanel(svg, slot, view){
   const comp=compiled(slotSwingId(slot));
   const T=view==="face"?FACE:DTL;
   let vb=`0 0 ${T.w} ${T.h}`;
-  if (comp){ const bb=swingScreenBox(comp, view, cmp.xf[slot]); if (bb) vb=fitBox(bb,T); }
+  if (comp){ const {box,mf}=fitRegion(comp,view,cmp.xf[slot],cmp.vids[slot]); if (box) vb=fitBox(box,T,mf); }
   svg.setAttribute("viewBox", vb);
   drawGrid(svg, view);
-  if (!comp) return;
+  if (!comp) { drawAnnotationsFor(svg); return; }
   const xg=xformGroup(svg, view, cmp.xf[slot]);
   insertVideoRec(xg, cmp.vids[slot], view);
   renderSwingInto(xg, view, comp, { club:$("tglClub").checked, velocity:$("tglVelocity").checked });
   drawPosRing(xg, comp, view, slotPos(slot), slot==="A"?"var(--c-down)":"var(--c-ov1)");
+  drawAnnotationsFor(svg);
 }
 /* ghost: swing A solid + swing B superimposed as a translucent ghost, in one panel */
 function drawGhostView(view){
@@ -2135,25 +2163,24 @@ function drawGhostView(view){
   svg.textContent="";
   const T=view==="face"?FACE:DTL;
   const cA=compiled(study.primary), cB=cmp.B?compiled(cmp.B):null;
-  const boxes=[];
-  if(cA){ const b=swingScreenBox(cA,view,cmp.xf.A); if(b)boxes.push(b); }
-  if(cB){ const b=swingScreenBox(cB,view,cmp.xf.B); if(b)boxes.push(b); }
-  let vb=`0 0 ${T.w} ${T.h}`;
-  if(boxes.length){ vb=fitBox({minx:Math.min(...boxes.map(b=>b.minx)),miny:Math.min(...boxes.map(b=>b.miny)),
-    maxx:Math.max(...boxes.map(b=>b.maxx)),maxy:Math.max(...boxes.map(b=>b.maxy))},T); }
-  svg.setAttribute("viewBox",vb);
+  const showVid=$("tglVideo").checked;
+  let box=null, mf=0.22;
+  if(cA){ const r=fitRegion(cA,view,cmp.xf.A,cmp.vids.A); box=unionBox(box,r.box); if(r.mf<mf)mf=r.mf; }
+  if(cB){ const r=fitRegion(cB,view,cmp.xf.B,cmp.vids.B); box=unionBox(box,r.box); if(r.mf<mf)mf=r.mf; }
+  svg.setAttribute("viewBox", box?fitBox(box,T,mf):`0 0 ${T.w} ${T.h}`);
   drawGrid(svg,view);
-  // both videos first, behind everything, so both paths stay visible on top
-  if ($("tglVideo").checked){
-    if(cA){ const vg=xformGroup(svg,view,cmp.xf.A); insertVideoRec(vg,cmp.vids.A,view); }
-    if(cB){ const vg=xformGroup(svg,view,cmp.xf.B); vg.setAttribute("opacity","0.5"); insertVideoRec(vg,cmp.vids.B,view); }
+  // both videos first (behind), at each swing's opacity
+  if (showVid){
+    if(cA){ const vg=xformGroup(svg,view,cmp.xf.A); vg.setAttribute("opacity",String(cmp.op.A)); insertVideoRec(vg,cmp.vids.A,view); }
+    if(cB){ const vg=xformGroup(svg,view,cmp.xf.B); vg.setAttribute("opacity",String(cmp.op.B*0.9)); insertVideoRec(vg,cmp.vids.B,view); }
   }
-  if(cA){ const xg=xformGroup(svg,view,cmp.xf.A);
+  if(cA){ const xg=xformGroup(svg,view,cmp.xf.A); xg.setAttribute("opacity",String(Math.max(cmp.op.A,0.5)));
     renderSwingInto(xg,view,cA,{club:$("tglClub").checked,velocity:false});
     drawPosRing(xg,cA,view,cmp.posA,"var(--c-down)"); }
-  if(cB){ const xg=xformGroup(svg,view,cmp.xf.B); xg.setAttribute("opacity","0.72");
+  if(cB){ const xg=xformGroup(svg,view,cmp.xf.B); xg.setAttribute("opacity",String(Math.max(cmp.op.B,0.4)));
     renderSwingInto(xg,view,cB,{overlayColor:"var(--c-ov1)"});
     drawPosRing(xg,cB,view,cmp.posB,"var(--c-ov1)"); }
+  drawAnnotationsFor(svg);
 }
 function drawGhostAll(){
   const views=study.view==="both"?["face","dtl"]:[study.view];
@@ -2216,7 +2243,9 @@ function renderCompare(){
       const panel=document.createElement("div"); panel.className="cmp-panel";
       const lbl=document.createElement("span"); lbl.className="stagelabel"; lbl.textContent=v==="face"?"Face-on":"Down-the-line";
       const svg=document.createElementNS(SVGNS,"svg"); svg.id=`cmp_ghost_${v}`;
+      svg.dataset.annoKey=`ghost_${v}`;
       svg.setAttribute("viewBox", v==="face"?"0 0 760 520":"0 0 620 520");
+      attachDraw(svg);
       panel.append(lbl,svg); panels.appendChild(panel);
     }
     wrap.appendChild(panels);
@@ -2226,7 +2255,8 @@ function renderCompare(){
     drawGhostAll();
     return;
   }
-  wrap.className = study.view==="both" ? "" : "cols";
+  wrap.className="";
+  const row=document.createElement("div"); row.className="cmp-row";
   for (const slot of ["A","B"]){
     const id=slotSwingId(slot), sw=swingById(id);
     const slotEl=document.createElement("div"); slotEl.className="cmp-slot";
@@ -2238,13 +2268,16 @@ function renderCompare(){
       const panel=document.createElement("div"); panel.className="cmp-panel";
       const lbl=document.createElement("span"); lbl.className="stagelabel"; lbl.textContent=v==="face"?"Face-on":"Down-the-line";
       const svg=document.createElementNS(SVGNS,"svg"); svg.id=`cmp_${slot}_${v}`;
+      svg.dataset.annoKey=`${slot}_${v}`;
       svg.setAttribute("viewBox", v==="face"?"0 0 760 520":"0 0 620 520");
+      attachDraw(svg);
       panel.append(lbl,svg); panels.appendChild(panel);
     }
     slotEl.appendChild(panels);
     slotEl.appendChild(buildCmpScrubber(slot));
-    wrap.appendChild(slotEl);
+    row.appendChild(slotEl);
   }
+  wrap.appendChild(row);
   ensureCompareVideos();
   drawCmpSlot("A"); drawCmpSlot("B");
 }
@@ -2260,12 +2293,14 @@ function setCompare(on){
   cmp.on=on;
   $("compareSel").disabled=!on; $("tglGhost").disabled=!on;
   $("stages").hidden=on; $("soloTransport").hidden=on; $("compareWrap").hidden=!on;
-  if (on){ stopPlay(); refreshCompareSel(); $("resizeControls").hidden=!cmp.B; renderCompare(); }
-  else { $("resizeControls").hidden=true; rebuildStages(); }
+  if (on){ stopPlay(); refreshCompareSel(); $("resizeControls").hidden=!cmp.B; $("ghostOpacity").hidden=!cmp.ghost; renderCompare(); }
+  else { $("resizeControls").hidden=true; $("ghostOpacity").hidden=true; rebuildStages(); }
 }
 $("tglCompare").addEventListener("change",e=>setCompare(e.target.checked));
-$("tglGhost").addEventListener("change",e=>{ cmp.ghost=e.target.checked; renderCompare(); });
+$("tglGhost").addEventListener("change",e=>{ cmp.ghost=e.target.checked; $("ghostOpacity").hidden=!cmp.ghost; renderCompare(); });
 $("cmpSize").addEventListener("input",e=>{ document.documentElement.style.setProperty("--cmp-w", e.target.value+"px"); });
+$("axOp").addEventListener("input",e=>{ cmp.op.A=+e.target.value; if(cmp.ghost) drawGhostAll(); });
+$("bxOp").addEventListener("input",e=>{ cmp.op.B=+e.target.value; if(cmp.ghost) drawGhostAll(); });
 $("compareSel").addEventListener("change",e=>{ cmp.B=e.target.value||null; $("resizeControls").hidden=!cmp.B; renderCompare(); });
 $("btnResizeReset").addEventListener("click",()=>{
   cmp.xf.A={s:1,dy:0}; cmp.xf.B={s:1,dy:0};
@@ -2278,15 +2313,23 @@ $("bxScale").addEventListener("input",e=>{ cmp.xf.B.s=+e.target.value; drawCmpSl
 $("bxDy").addEventListener("input",e=>{ cmp.xf.B.dy=+e.target.value; drawCmpSlot("B"); });
 
 /* =================================================================
-   DRAWING / ANNOTATION tools on the Study stages
+   DRAWING / ANNOTATION tools — work on solo AND compare stages
+   Each drawable SVG carries dataset.annoKey; shapes stored per key in
+   base (viewBox) coordinates so they stay put across zoom/resize.
    ================================================================= */
-const annoStore = { face:[], dtl:[] };
-const annoOrder = [];
+const annoStore = {};                 // key -> [shapes]
+const annoOrder = [];                 // [key,...] for undo
 let annoTool=null, annoColor="#e0483a", annoWidth=3, annoShow=true, annoDrawing=null;
+const getAnno = (k)=> (annoStore[k] || (annoStore[k]=[]));
 
 function svgVB(svg){ const v=(svg.getAttribute("viewBox")||"0 0 760 520").split(/\s+/).map(Number); return {x:v[0],y:v[1],w:v[2],h:v[3]}; }
 function svgCoords(svg,e){ const r=svg.getBoundingClientRect(), vb=svgVB(svg);
   return [ vb.x+(e.clientX-r.left)/r.width*vb.w, vb.y+(e.clientY-r.top)/r.height*vb.h ]; }
+function annoTol(svg){ const r=svg.getBoundingClientRect(), vb=svgVB(svg); return r.width? 16*vb.w/r.width : 16; }
+function shapeAnchors(s){ return s.tool==="pen" ? s.pts : [s.pts[0], s.pts[1], [(s.pts[0][0]+s.pts[1][0])/2,(s.pts[0][1]+s.pts[1][1])/2]]; }
+function distToShape(s, x, y){ let d=1e9; for(const p of shapeAnchors(s)) d=Math.min(d, Math.hypot(p[0]-x,p[1]-y)); return d; }
+function hitShape(list, x, y, tol){ let best=-1, bd=tol; for(let i=list.length-1;i>=0;i--){ const d=distToShape(list[i],x,y); if(d<bd){bd=d;best=i;} } return best; }
+function translateShape(s, dx, dy){ s.pts = s.pts.map(p=>[p[0]+dx,p[1]+dy]); }
 function renderShape(g, s){
   const a={stroke:s.color,"stroke-width":s.width,fill:"none","stroke-linecap":"round","stroke-linejoin":"round"};
   if (s.tool==="pen"){ let d=""; s.pts.forEach((p,i)=>d+=(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)); if(s.pts.length) el("path",{...a,d},g); }
@@ -2300,22 +2343,30 @@ function renderShape(g, s){
   else if (s.tool==="ellipse"){ el("ellipse",{...a,cx:(s.pts[0][0]+s.pts[1][0])/2,cy:(s.pts[0][1]+s.pts[1][1])/2,
     rx:Math.abs(s.pts[1][0]-s.pts[0][0])/2,ry:Math.abs(s.pts[1][1]-s.pts[0][1])/2},g); }
 }
-function drawAnnotations(svg, view){
-  if (!annoShow) return;
+function drawAnnotationsFor(svg){
+  const key=svg.dataset.annoKey; if(!key || !annoShow) return;
+  const list=annoStore[key]; if(!list||!list.length) return;
   const layer=el("g",{class:"annotLayer"},svg);
-  for (const s of annoStore[view]) renderShape(layer, s);
+  for (const s of list) renderShape(layer, s);
 }
-function attachDraw(svgId, view){
-  const svg=$(svgId);
+function redrawAnno(svg){ const l=svg.querySelector(".annotLayer"); if(l) l.remove(); drawAnnotationsFor(svg); }
+function attachDraw(svg){
   svg.addEventListener("pointerdown",(e)=>{
-    if (!annoTool || cmp.on) return;
+    if (!annoTool) return;
+    const key=svg.dataset.annoKey; const p=svgCoords(svg,e);
     e.preventDefault(); try{svg.setPointerCapture(e.pointerId);}catch(_){}
-    const p=svgCoords(svg,e);
-    annoDrawing={tool:annoTool,color:annoColor,width:annoWidth,pts:annoTool==="pen"?[p]:[p,p],svg,view};
+    if (annoTool==="move"){
+      const list=getAnno(key), idx=hitShape(list,p[0],p[1],annoTol(svg));
+      annoDrawing = idx>=0 ? {move:true,key,svg,idx,last:p} : null;
+      return;
+    }
+    annoDrawing={tool:annoTool,color:annoColor,width:annoWidth,pts:annoTool==="pen"?[p]:[p,p],svg,key};
   });
   svg.addEventListener("pointermove",(e)=>{
     if (!annoDrawing || annoDrawing.svg!==svg) return;
     const p=svgCoords(svg,e);
+    if (annoDrawing.move){ translateShape(getAnno(annoDrawing.key)[annoDrawing.idx], p[0]-annoDrawing.last[0], p[1]-annoDrawing.last[1]);
+      annoDrawing.last=p; redrawAnno(svg); return; }
     if (annoDrawing.tool==="pen") annoDrawing.pts.push(p); else annoDrawing.pts[1]=p;
     const old=svg.querySelector(".annotLive"); if(old) old.remove();
     renderShape(el("g",{class:"annotLive"},svg), annoDrawing);
@@ -2323,28 +2374,31 @@ function attachDraw(svgId, view){
   const finish=(e)=>{
     if (!annoDrawing || annoDrawing.svg!==svg) return;
     try{svg.releasePointerCapture(e.pointerId);}catch(_){}
+    if (annoDrawing.move){ annoDrawing=null; return; }
     const live=svg.querySelector(".annotLive"); if(live) live.remove();
     const s=annoDrawing; annoDrawing=null;
     const big = s.tool==="pen" ? s.pts.length>1 : Math.hypot(s.pts[1][0]-s.pts[0][0],s.pts[1][1]-s.pts[0][1])>3;
-    if (big){ annoStore[view].push({tool:s.tool,color:s.color,width:s.width,pts:s.pts}); annoOrder.push(view);
-      const l=svg.querySelector(".annotLayer"); if(l) l.remove(); drawAnnotations(svg,view); }
+    if (big){ getAnno(s.key).push({tool:s.tool,color:s.color,width:s.width,pts:s.pts}); annoOrder.push(s.key); redrawAnno(svg); }
   };
   svg.addEventListener("pointerup",finish);
   svg.addEventListener("pointercancel",finish);
 }
-attachDraw("faceSvg","face"); attachDraw("dtlSvg","dtl");
+attachDraw($("faceSvg")); attachDraw($("dtlSvg"));
 document.querySelectorAll("#annotTools button").forEach(b=>{
   b.addEventListener("click",()=>{
     annoTool = annoTool===b.dataset.tool ? null : b.dataset.tool;
     document.querySelectorAll("#annotTools button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.tool===annoTool)));
-    document.querySelectorAll(".stagebox").forEach(sb=>sb.classList.toggle("drawing", !!annoTool));
+    const drawing=!!annoTool;
+    document.querySelectorAll(".stagebox").forEach(sb=>sb.classList.toggle("drawing", drawing));
+    document.querySelectorAll(".cmp-panel").forEach(sb=>sb.classList.toggle("drawing", drawing));
   });
 });
 $("annotColor").addEventListener("input",e=>annoColor=e.target.value);
 $("annotWidth").addEventListener("input",e=>annoWidth=+e.target.value);
-$("annotUndo").addEventListener("click",()=>{ const v=annoOrder.pop(); if(v){ annoStore[v].pop(); rebuildStages(); } });
-$("annotClear").addEventListener("click",()=>{ annoStore.face=[]; annoStore.dtl=[]; annoOrder.length=0; rebuildStages(); });
-$("annotShow").addEventListener("change",e=>{ annoShow=e.target.checked; rebuildStages(); });
+function redrawAllAnno(){ if(cmp.on) renderCompare(); else rebuildStages(); }
+$("annotUndo").addEventListener("click",()=>{ const k=annoOrder.pop(); if(k&&annoStore[k]){ annoStore[k].pop(); redrawAllAnno(); } });
+$("annotClear").addEventListener("click",()=>{ for(const k in annoStore) annoStore[k]=[]; annoOrder.length=0; redrawAllAnno(); });
+$("annotShow").addEventListener("change",e=>{ annoShow=e.target.checked; redrawAllAnno(); });
 
 /* ---------- boot ---------- */
 refreshSelectors();
