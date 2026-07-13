@@ -154,8 +154,9 @@ table.datatable th{color:var(--muted);font-weight:600}
 #digMedia{position:relative;transform-origin:0 0;will-change:transform;line-height:0}
 #digMedia video,#digMedia img{display:block;width:100%;height:100%;border-radius:6px}
 #digMedia svg.overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
-#digStage.panning{cursor:grab}
-#digStage.panning.dragging{cursor:grabbing}
+#digStage.panning #digMedia svg.overlay{cursor:grab}
+#digStage.panning.dragging #digMedia svg.overlay{cursor:grabbing}
+#btnPan[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
 .dig-empty{padding:40px 20px;text-align:center;color:var(--muted);max-width:520px}
 .zoombadge{position:absolute;top:8px;right:10px;background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:2px 8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;pointer-events:none;opacity:.9}
@@ -174,6 +175,15 @@ table.datatable th{color:var(--muted);font-weight:600}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s}
 .toast.show{opacity:.95}
 @media (prefers-reduced-motion: reduce){ .toast{transition:none} }
+.modal{position:fixed;inset:0;background:rgba(8,12,10,.55);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+.modal-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:940px;width:100%;max-height:90vh;overflow:auto;padding:16px 18px;box-shadow:0 12px 48px rgba(0,0,0,.35)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.modal-head b{font-size:15px}
+.pguide-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.pguide-cell{border:1px solid var(--line);border-radius:8px;padding:8px 6px;text-align:center;background:var(--panel2)}
+.pguide-cell svg{width:100%;max-height:150px;display:block}
+.pguide-cell .ttl{font-size:12px;font-weight:700;margin-top:4px}
+.pguide-cell .nm{font-size:10.5px;color:var(--muted);line-height:1.3;margin-top:2px}
 .notice{font-size:12px;color:var(--muted);border-left:3px solid var(--c-down);padding:4px 10px;background:var(--panel2);border-radius:0 6px 6px 0}
 footer.app{padding:14px 20px 26px;max-width:1480px;margin:0 auto;color:var(--muted);font-size:12px}
 footer.app a{color:var(--accent)}
@@ -395,8 +405,12 @@ footer.app a{color:var(--accent)}
       <div class="sep"></div>
       <div class="grp">
         <span class="lbl">Tag</span>
-        <select id="digPhase"><option value="">—</option></select>
+        <select id="digPhase"><option value="">— none —</option><option value="ref">Reference (shapes path, no P)</option></select>
         <button id="btnUndo" title="Undo last point">Undo</button>
+      </div>
+      <div class="sep"></div>
+      <div class="grp">
+        <button id="btnPGuide" title="Show what each P position looks like">📖 P guide</button>
       </div>
     </div>
 
@@ -437,6 +451,17 @@ footer.app a{color:var(--accent)}
 </footer>
 
 <div class="toast" id="toast" role="status"></div>
+
+<div id="pguideModal" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <b>The 10 P positions — reference</b>
+      <button id="pguideClose" title="Close">✕</button>
+    </div>
+    <div id="pguideGrid" class="pguide-grid"></div>
+    <p class="hint" style="margin:10px 0 0">Schematic, face-on with the target to the right. Match your golfer to these to place P tags — jump to the frame that matches each and tag it.</p>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -654,9 +679,9 @@ function compiled(id){
 }
 const OV_COLORS = ["var(--c-ov1)","var(--c-ov2)","var(--c-ov3)"];
 
-/* world->screen transforms */
-const FACE = { w:760, h:520, cx:400, groundY:470, s:4.6 };  // x in [-70,+72]ish
-const DTL  = { w:620, h:520, cx:250, groundY:470, s:4.6 };  // horizontal = z
+/* world->screen transforms (origin centered in the plot) */
+const FACE = { w:760, h:520, cx:380, groundY:474, s:4.6 };  // x = inches from body center
+const DTL  = { w:620, h:520, cx:300, groundY:474, s:4.6 };  // horizontal = z (depth)
 const fx = x => FACE.cx + x*FACE.s, fy = y => FACE.groundY - y*FACE.s;
 const dx = z => DTL.cx + z*DTL.s,  dy = y => DTL.groundY - y*DTL.s;
 
@@ -669,34 +694,49 @@ function pathD(xs, ys, toX, toY, i0, i1){
   return d;
 }
 
+const GRID_STEP = 6;   // inches per grid cell (fine grid to read movement)
 function drawGrid(svg, view){
   const g = el("g",{class:"grid"},svg);
   const [W,H,toX,toY] = view==="face" ? [FACE.w,FACE.h,fx,fy] : [DTL.w,DTL.h,dx,dy];
+  const s = view==="face"?FACE.s:DTL.s;
+  const xmin = Math.round(-(view==="face"?FACE.cx:DTL.cx)/s/GRID_STEP)*GRID_STEP;
+  const xmax = Math.round((W-(view==="face"?FACE.cx:DTL.cx))/s/GRID_STEP)*GRID_STEP;
+  const gy0 = view==="face"?FACE.groundY:DTL.groundY;
+  const ytop = Math.floor((gy0-8)/s/GRID_STEP)*GRID_STEP;
   if ($("tglGrid").checked){
-    const xmin = view==="face" ? -84 : -48, xmax = view==="face" ? 84 : 72;
-    for (let gx=Math.ceil(xmin/12)*12; gx<=xmax; gx+=12){
-      el("line",{x1:toX(gx),y1:toY(100),x2:toX(gx),y2:toY(0),stroke:gx===0?"var(--grid-major)":"var(--grid)","stroke-width":gx===0?1.6:1},g);
+    for (let gx=xmin; gx<=xmax; gx+=GRID_STEP){
+      const major = gx%12===0, zero = gx===0;
+      el("line",{x1:toX(gx),y1:toY(ytop),x2:toX(gx),y2:toY(0),
+        stroke:zero?"var(--grid-major)":"var(--grid)","stroke-width":zero?1.6:1,opacity:major?1:.55},g);
+      if (major && gx!==0 && Math.abs(gx)<=Math.max(-xmin,xmax)-6){          // x value labels along the bottom
+        const t=el("text",{x:toX(gx),y:toY(0)+13,"text-anchor":"middle","font-size":8.5,fill:"var(--muted)"},g);
+        t.textContent = (gx>0?"+":"")+gx;
+      }
     }
-    for (let gy=0; gy<=96; gy+=12){
-      el("line",{x1:14,y1:toY(gy),x2:W-14,y2:toY(gy),stroke:gy===0?"var(--ground)":"var(--grid)","stroke-width":gy===0?1.6:1},g);
-      if (gy>0){
-        const t = el("text",{x:W-18,y:toY(gy)-3,"text-anchor":"end","font-size":9,fill:"var(--muted)"},g);
+    for (let gy=0; gy<=ytop; gy+=GRID_STEP){
+      const major = gy%12===0, ground = gy===0;
+      el("line",{x1:14,y1:toY(gy),x2:W-14,y2:toY(gy),
+        stroke:ground?"var(--ground)":"var(--grid)","stroke-width":ground?1.6:1,opacity:major?1:.55},g);
+      if (major && gy>0){
+        const t = el("text",{x:W-16,y:toY(gy)-2,"text-anchor":"end","font-size":8.5,fill:"var(--muted)"},g);
         t.textContent = gy+"″";
       }
     }
   } else {
     el("line",{x1:14,y1:toY(0),x2:W-14,y2:toY(0),stroke:"var(--ground)","stroke-width":1.6},g);
-    el("line",{x1:toX(0),y1:toY(96),x2:toX(0),y2:toY(0),stroke:"var(--grid-major)","stroke-width":1.4},g);
+    el("line",{x1:toX(0),y1:toY(ytop),x2:toX(0),y2:toY(0),stroke:"var(--grid-major)","stroke-width":1.4},g);
   }
-  // x = 0 axis label (body center — sternum on face-on; body line on DTL)
-  const zlab = el("text",{x:toX(0),y:toY(0)+15,"text-anchor":"middle","font-size":10,"font-weight":"600",fill:"var(--muted)"},g);
+  // axis labels: x = 0 centerline, and the x-axis meaning
+  const zlab = el("text",{x:toX(0),y:toY(0)+26,"text-anchor":"middle","font-size":10,"font-weight":"600",fill:"var(--muted)"},g);
   zlab.textContent = view==="face" ? "x = 0 (body center)" : "x = 0 (body)";
+  const ax = el("text",{x:toX(0),y:20,"text-anchor":"middle","font-size":9,fill:"var(--muted)"},g);
+  ax.textContent = view==="face" ? "x = inches from body center  ·  y = inches above ground" : "x = depth (inches toward ball)  ·  y = inches above ground";
   if (view==="face"){
-    const t1=el("text",{x:W-16,y:toY(0)+16,"text-anchor":"end","font-size":10,fill:"var(--muted)"},g);
+    const t1=el("text",{x:W-16,y:toY(0)+26,"text-anchor":"end","font-size":10,fill:"var(--muted)"},g);
     t1.textContent="target →";
   } else {
-    const t2=el("text",{x:16,y:toY(0)+16,"font-size":10,fill:"var(--muted)"},g);
-    t2.textContent="← behind golfer · toward ball →   (target line runs into the screen)";
+    const t2=el("text",{x:16,y:toY(0)+26,"font-size":9,fill:"var(--muted)"},g);
+    t2.textContent="← behind · toward ball →";
   }
 }
 
@@ -754,6 +794,15 @@ function renderSwingInto(svg, view, comp, opts){
       el("path",{d,fill:"none",stroke:EX_COLORS[k],"stroke-width":1.4,opacity:.6,"stroke-dasharray":"2 3"},g);
       const t=el("text",{x:toX(xs[xs.length-1])+5,y:toY(ys[ys.length-1]),"font-size":9,fill:EX_COLORS[k]},g);
       t.textContent=EX_LABEL[k];
+    }
+  }
+  // reference points (non-P shaping markers) — small hollow ticks, from raw anchors
+  if (!opts.overlayColor && comp.sw.anchors){
+    for (const a of comp.sw.anchors){
+      if (!a.ref) continue;
+      const ax = view==="face" ? a.h[0] : (a.h[2]!=null?a.h[2]:(capView==="dtl"?a.h[0]:null));
+      if (ax==null) continue;
+      el("circle",{cx:toX(ax),cy:toY(a.h[1]),r:2,fill:"none",stroke:"var(--muted)","stroke-width":1,opacity:.7},g);
     }
   }
   // P markers on the path
@@ -953,16 +1002,7 @@ function updateDynamic(){
       if (view==="face") drawGolferFace(gb, comp, i);
       else drawGolferDtl(gb, comp, i);
     }
-    // hands dot + clubhead dot
-    let hx_ = view==="face" ? S.hx[i] : (comp.has3d ? S.hz[i] : (comp.sw.view==="dtl" ? S.hx[i] : null));
-    if (hx_!=null){
-      el("circle",{cx:toX(hx_),cy:toY(S.hy[i]),r:5.2,fill:"var(--c-down)",stroke:"var(--stage)","stroke-width":2},g);
-    }
-    if (comp.hasClub){
-      let cx_ = view==="face" ? S.cx[i] : (comp.has3d ? S.cz[i] : (comp.sw.view==="dtl" ? S.cx[i] : null));
-      if (cx_!=null)
-        el("circle",{cx:toX(cx_),cy:toY(S.cy[i]),r:4,fill:"var(--c-club)",stroke:"var(--stage)","stroke-width":1.6},g);
-    }
+    // (no moving position dot — the scrubbed video frame shows the current position)
   }
   // readouts
   $("mHands").textContent = `${fmt(S.hx[i])} / ${fmt(S.hy[i])}`;
@@ -1105,7 +1145,7 @@ async function exportSavedProject(s){
     const pts={}; const [hx,hy]=toPx(a.h[0],a.h[1]); pts.h=[hx,hy];
     if (a.c){ const [cx,cy]=toPx(a.c[0],a.c[1]); pts.c=[cx,cy]; }
     for (const k of ["hip","sh","head"]) if (a[k]){ const [x,y]=toPx(a[k][0],a[k][1]); pts[k]=[x,y]; }
-    return { tMs: Math.round(((vidT0||0)+a.t)*1000), p:a.p||0, pts, ai:[] };
+    return { tMs: Math.round(((vidT0||0)+a.t)*1000), p:a.p||0, ref:!!a.ref, pts, ai:[] };
   });
   const proj={ app:"handpath-lab-project", version:1,
     meta:{ name:s.name, club:s.club, view:s.view, dir:dir||1, height:s.height||71 },
@@ -1468,7 +1508,7 @@ $("digOverlay").addEventListener("pointerdown",(e)=>{
   if (frame.ai) frame.ai.delete(KPS[dig.kp].k);   // now a manual correction
   dig.clicks.push([tMs,KPS[dig.kp].k]);
   const ph=$("digPhase").value;
-  if (ph) { dig.frames.get(tMs).p=parseInt(ph,10); $("digPhase").value=""; }
+  if (ph) { applyTag(dig.frames.get(tMs), ph); $("digPhase").value=""; }
   renderFrames(); redrawOverlay();
 });
 $("digOverlay").addEventListener("pointermove",(e)=>{
@@ -1502,11 +1542,16 @@ $("digOverlay").addEventListener("dblclick",(e)=>{
     renderFrames(); redrawOverlay(); toast("Point deleted");
   }
 });
+function applyTag(fr, val){
+  if (!fr || !val) return;
+  if (val==="ref"){ fr.ref=true; fr.p=0; }
+  else { fr.p=parseInt(val,10); fr.ref=false; }
+}
 $("digPhase").addEventListener("change",()=>{
   if (dig.kind!=="video") return;
   const tMs=Math.round($("digVideo").currentTime*1000);
   if (dig.frames.has(tMs) && $("digPhase").value){
-    dig.frames.get(tMs).p=parseInt($("digPhase").value,10);
+    applyTag(dig.frames.get(tMs), $("digPhase").value);
     $("digPhase").value=""; renderFrames();
   }
 });
@@ -1583,7 +1628,7 @@ function renderFrames(){
       } else dd.title=kp.label+" — not set";
       dots.appendChild(dd);
     }
-    const ptag=document.createElement("span"); ptag.className="mono hint"; ptag.style.minWidth="22px"; ptag.textContent=fr.p?("P"+fr.p):"";
+    const ptag=document.createElement("span"); ptag.className="mono hint"; ptag.style.minWidth="22px"; ptag.textContent=fr.p?("P"+fr.p):(fr.ref?"ref":"");
     const del=document.createElement("button"); del.className="x"; del.textContent="✕"; del.title="Delete whole frame";
     del.addEventListener("click",()=>{ dig.frames.delete(t); renderFrames(); redrawOverlay(); });
     row.append(tm,dots,ptag,del); list.appendChild(row);
@@ -1606,6 +1651,7 @@ $("btnSavePlayer").addEventListener("click",()=>{
     const fr=dig.frames.get(t);
     const [x,y]=toWorld(fr.pts.h);
     const a={t:(t-t0)/1000, p:fr.p||0, h:[x,y,null]};
+    if (fr.ref) a.ref=true;
     if (fr.pts.c){ const [cx0,cy0]=toWorld(fr.pts.c); a.c=[cx0,cy0,null]; }
     for (const [src,dst] of [["hip","hip"],["sh","sh"],["head","head"]])
       if (fr.pts[src]){ a[dst]=toWorld(fr.pts[src]); }
@@ -1793,13 +1839,64 @@ function buildPNav(){
 
 $("btnAutoTrack").addEventListener("click",runAutoTrack);
 
+/* ---------- P-position reference guide (schematic figures) ---------- */
+// [handsX,handsY, clubTipX,clubTipY] in a 100x140 box, target to the right
+const PFIG = [
+  [50,80, 50,132],  // P1 address
+  [37,77,  7,73],   // P2 takeaway (shaft parallel, back)
+  [29,50, 33,13],   // P3 lead arm parallel (club up)
+  [42,24, 76,18],   // P4 top
+  [45,40, 72,16],   // P5 transition
+  [40,74, 10,70],   // P6 delivery (shaft parallel down)
+  [55,80, 55,132],  // P7 impact
+  [66,75, 96,73],   // P8 release (shaft parallel out)
+  [73,48, 78,13],   // P9 follow-through (lead arm parallel)
+  [55,22, 30,18],   // P10 finish (wrapped)
+];
+function drawFig(svg, f){
+  const L=(x1,y1,x2,y2,w,col)=>el("line",{x1,y1,x2,y2,stroke:col||"var(--ink)","stroke-width":w||2,"stroke-linecap":"round"},svg);
+  L(40,74,36,128,2); L(60,74,64,128,2);                 // legs
+  L(31,128,41,128,3); L(59,128,69,128,3);               // feet
+  L(40,74,60,74,3);                                     // hips
+  L(50,74,50,30,2.4);                                   // spine
+  L(38,30,62,30,3);                                     // shoulders
+  el("circle",{cx:50,cy:16,r:8,fill:"none",stroke:"var(--ink)","stroke-width":2},svg);
+  L(50,26,50,30,2);                                     // neck
+  el("circle",{cx:50,cy:132,r:2.4,fill:"none",stroke:"var(--muted)","stroke-width":1.2},svg); // ball
+  const [hx,hy,cx,cy]=f;
+  L(38,30,hx,hy,1.8,"var(--golfer)"); L(62,30,hx,hy,1.8,"var(--golfer)"); // arms
+  L(hx,hy,cx,cy,2.2,"var(--c-down)");                   // club shaft
+  el("circle",{cx:hx,cy:hy,r:3.2,fill:"var(--c-down)"},svg);            // hands
+  el("text",{x:96,y:126,"text-anchor":"end","font-size":7,fill:"var(--muted)"},svg).textContent="target →";
+}
+let _pguideBuilt=false;
+function buildPGuide(){
+  if (_pguideBuilt) return; _pguideBuilt=true;
+  const grid=$("pguideGrid"); grid.textContent="";
+  PFIG.forEach((f,idx)=>{
+    const P=idx+1;
+    const cell=document.createElement("div"); cell.className="pguide-cell";
+    const svg=document.createElementNS(SVGNS,"svg"); svg.setAttribute("viewBox","0 0 100 140");
+    drawFig(svg,f);
+    const ttl=document.createElement("div"); ttl.className="ttl"; ttl.textContent=`P${P} · ${PHASES[P-1][1]}`;
+    const nm=document.createElement("div"); nm.className="nm"; nm.textContent=PHASES[P-1][2];
+    cell.append(svg,ttl,nm); grid.appendChild(cell);
+  });
+}
+function openPGuide(){ buildPGuide(); $("pguideModal").removeAttribute("hidden"); }
+function closePGuide(){ $("pguideModal").setAttribute("hidden",""); }
+$("btnPGuide").addEventListener("click",openPGuide);
+$("pguideClose").addEventListener("click",closePGuide);
+$("pguideModal").addEventListener("click",(e)=>{ if(e.target===$("pguideModal")) closePGuide(); });
+document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && !$("pguideModal").hasAttribute("hidden")) closePGuide(); });
+
 /* =================================================================
    EDITABLE PROJECT — export video + tracked points, re-import to edit
    ================================================================= */
 function blobToDataURL(blob){ return new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(blob); }); }
 function framesToJSON(){
   return [...dig.frames.entries()].sort((a,b)=>a[0]-b[0]).map(([tMs,fr])=>({
-    tMs, p:fr.p||0, pts:fr.pts, ai: fr.ai?[...fr.ai]:[] }));
+    tMs, p:fr.p||0, ref:!!fr.ref, pts:fr.pts, ai: fr.ai?[...fr.ai]:[] }));
 }
 async function exportProject(){
   if (!dig.frames.size){ toast("Nothing to export — track some points first"); return; }
@@ -1828,7 +1925,7 @@ async function importProject(file){
     dig.cal=proj.cal||null;
     if (dig.cal){ dig.calStep=-1; $("calReadout").textContent=`${dig.cal.pxPerIn.toFixed(2)} px/in`; renderCalSteps(); }
     dig.frames.clear(); dig.clicks=[];
-    for (const f of proj.frames||[]) dig.frames.set(f.tMs,{pts:f.pts,p:f.p||0,ai:new Set(f.ai||[])});
+    for (const f of proj.frames||[]) dig.frames.set(f.tMs,{pts:f.pts,p:f.p||0,ref:!!f.ref,ai:new Set(f.ai||[])});
     buildPNav(); renderFrames(); redrawOverlay();
     toast(`Project "${proj.meta.name}" loaded — edit and re-save`);
   };
@@ -1856,7 +1953,7 @@ function setMode(m){
   $("studyMain").hidden = m!=="study";
   $("digMain").hidden = m!=="dig";
   const ft=document.querySelector("footer.app"); if (ft) ft.hidden = m==="dig";  // no footer scroll in digitize
-  if (m==="study"){ refreshSelectors(); rebuildStages(); }
+  if (m==="study"){ refreshSelectors(); rebuildStages(); requestAnimationFrame(()=>{ rebuildStages(); }); }
   if (m==="dig"){ sizeDigLayout(); requestAnimationFrame(()=>{ if (!$("digMedia").hasAttribute("hidden")){ fitMediaToStage(); zoomFit(); } }); }
 }
 $("modeStudy").addEventListener("click",()=>setMode("study"));
