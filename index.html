@@ -218,6 +218,14 @@ footer.app a{color:var(--accent)}
     </div>
 
     <div class="panel">
+      <details>
+        <summary style="cursor:pointer;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700">Tour driver speed — measured</summary>
+        <div id="speedChart" style="margin-top:10px"></div>
+        <p class="hint" style="margin:8px 0 0">Real driver clubhead speed (ShotLink / TrackMan). Grey = no reliable public source (not estimated). Band = tour average 113–116.5 mph. Hover a bar for the source.</p>
+      </details>
+    </div>
+
+    <div class="panel">
       <h3>Library</h3>
       <div id="playersList"></div>
       <div class="row" style="margin-top:8px">
@@ -656,17 +664,55 @@ const PLAYER_PROFILES = {
       ["Shoulders P4→P7", "114° closed → 35° open"],
       ["Hips unwind top→impact", ">100°"],
       ["Peak pelvis velocity", "≈720°/s (tour avg ~500)"],
-      ["Driver clubhead speed", "up to ≈122 mph"],
+      ["Driver clubhead speed", "≈123 mph (ShotLink 2024)"],
     ],
   },
   "Jon Rahm": {
-    club:"Driver", source:"TrackMan Golf blog (primary)",
+    club:"Driver", source:"TrackMan Golf blog + ShotLink (primary)",
     rows:[
       ["Driver attack angle", "+5.2° (steep up)"],
       ["Club path (6-iron)", "slightly left"],
+      ["Driver clubhead speed", "≈120 mph (ShotLink 2023)"],
     ],
   },
 };
+
+/* Measured per-player DRIVER clubhead speed (mph). Real ShotLink/TrackMan data;
+   null = no reliable public source found (NOT estimated). See RESEARCH.md.
+   Tour avg reference band ~113–116.5 mph (ShotLink ~116; TrackMan driver ~113). */
+const PLAYER_SPEED = [
+  ["Bryson DeChambeau", 133.0, "measured", "Swing Man Golf, 2021 (last full PGA season)"],
+  ["Brooks Koepka", 124.28, "measured", "ShotLink ~2022"],
+  ["Justin Thomas", 124.5, "measured", "ShotLink 2024 (high side — mild caution)"],
+  ["Tony Finau", 123.93, "measured", "ShotLink 2024"],
+  ["Rory McIlroy", 123.45, "measured", "ShotLink 2024"],
+  ["Xander Schauffele", 123.0, "measured", "ShotLink 2024"],
+  ["Tiger Woods", 121.9, "measured", "ShotLink 2018 (old/partial)"],
+  ["Wyndham Clark", 122.0, "measured", "Sportsbox AI 2024 + ShotLink"],
+  ["Will Zalatoris", 120.0, "approx", "golf.com ~2021 (down ~5 mph post-2023 surgery)"],
+  ["Jon Rahm", 119.68, "measured", "ShotLink 2023"],
+  ["Ludvig Åberg", 119.7, "measured", "ShotLink 2024"],
+  ["Jason Day", 119.47, "measured", "ShotLink ~2017 (older; ~116–117 in 2020)"],
+  ["Joaquin Niemann", 119.0, "measured", "Swing Man Golf, pre-LIV PGA seasons"],
+  ["Scottie Scheffler", 118.83, "measured", "ShotLink 2024"],
+  ["Matt Fitzpatrick", 118.13, "measured", "Fit For Golf 2022 (~119–121 recently)"],
+  ["Sam Burns", 118.0, "approx", "MyGolfSpy 2025 ('over 118 mph')"],
+  ["Keegan Bradley", 115.61, "measured", "PGA Tour stat 2024"],
+  ["Hideki Matsuyama", 115.5, "measured", "ShotLink 2024"],
+  ["Jordan Spieth", 115.0, "approx", "Golf Digest (rounded/self-reported)"],
+  ["Tommy Fleetwood", 114.93, "measured", "ShotLink 2024"],
+  ["Collin Morikawa", 114.12, "measured", "ShotLink 2024"],
+  ["Ernie Els", 112.95, "measured", "ShotLink ~2013 (old data)"],
+  ["Russell Henley", 110.89, "measured", "PGA Tour stat 2026 WITB"],
+  ["Viktor Hovland", null, null, "no reliable recent source"],
+  ["Patrick Cantlay", null, null, "no reliable source (distance only)"],
+  ["Max Homa", null, null, "no reliable source"],
+  ["Sungjae Im", null, null, "no reliable source"],
+  ["Corey Conners", null, null, "no reliable source"],
+  ["Sahith Theegala", null, null, "no reliable source"],
+  ["Taylor Pendrith", null, null, "no reliable source"],
+];
+const SPEED_BAND = [113, 116.5];
 
 const LS_KEY = "handpathlab.players.v1";
 function loadSaved(){
@@ -1470,9 +1516,58 @@ function setMode(m){
 $("modeStudy").addEventListener("click",()=>setMode("study"));
 $("modeDigitize").addEventListener("click",()=>setMode("dig"));
 
+/* ---------- tour driver-speed reference chart ---------- */
+function buildSpeedChart(){
+  const box = $("speedChart"); if (!box) return;
+  box.textContent = "";
+  const measured = PLAYER_SPEED.filter(p=>p[1]!=null);
+  const nodata = PLAYER_SPEED.filter(p=>p[1]==null);
+  const lo = 104, hi = 135;                       // x-domain (mph)
+  const W = 268, rowH = 15, padL = 96, barW = W - padL - 30;
+  const xf = v => padL + (Math.max(lo,Math.min(hi,v))-lo)/(hi-lo)*barW;
+  const H = (measured.length+nodata.length)*rowH + 26;
+  const svg = document.createElementNS(SVGNS,"svg");
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.setAttribute("width","100%");
+  svg.style.display="block";
+  // tour-average band
+  const bx0=xf(SPEED_BAND[0]), bx1=xf(SPEED_BAND[1]);
+  el("rect",{x:bx0,y:4,width:bx1-bx0,height:H-22,fill:"var(--accent)",opacity:.10},svg);
+  el("text",{x:(bx0+bx1)/2,y:H-6,"text-anchor":"middle","font-size":8,fill:"var(--muted)"},svg).textContent="tour avg";
+  // axis ticks
+  for (const t of [110,120,130]){
+    el("line",{x1:xf(t),y1:4,x2:xf(t),y2:H-20,stroke:"var(--grid)","stroke-width":1},svg);
+    el("text",{x:xf(t),y:H-6,"text-anchor":"middle","font-size":8,fill:"var(--muted)"},svg).textContent=t;
+  }
+  let y = 8;
+  const drawRow = (name, v, conf, src, muted) => {
+    const g = el("g",{},svg);
+    const title = el("title",{},g);
+    title.textContent = muted ? `${name}: ${src}` : `${name}: ${v} mph — ${src}`;
+    el("text",{x:padL-6,y:y+rowH*0.72,"text-anchor":"end","font-size":9,fill: muted?"var(--muted)":"var(--ink)"},g)
+      .textContent = name.length>15 ? name.split(" ").slice(-1)[0] : name;
+    if (muted){
+      el("line",{x1:padL,y1:y+rowH/2,x2:padL+18,y2:y+rowH/2,stroke:"var(--line)","stroke-width":2,"stroke-dasharray":"2 2"},g);
+      el("text",{x:padL+22,y:y+rowH*0.72,"font-size":8,fill:"var(--muted)"},g).textContent="no public data";
+    } else {
+      const col = conf==="approx" ? "var(--c-down)" : "var(--accent)";
+      el("rect",{x:padL,y:y+2,width:Math.max(2,xf(v)-padL),height:rowH-5,rx:2,fill:col,opacity: conf==="approx"?.55:.9},g);
+      el("text",{x:xf(v)+3,y:y+rowH*0.72,"font-size":8.5,fill:"var(--muted)"},g).textContent=v.toFixed(0);
+    }
+    y += rowH;
+  };
+  for (const [n,v,c,s] of measured) drawRow(n,v,c,s,false);
+  for (const [n,v,c,s] of nodata) drawRow(n,null,null,s,true);
+  box.appendChild(svg);
+  const key=document.createElement("div"); key.className="row"; key.style.cssText="gap:12px;margin-top:6px";
+  key.innerHTML='<span class="chip"><span class="swatch" style="background:var(--accent)"></span>measured</span>'+
+    '<span class="chip"><span class="swatch" style="background:var(--c-down);opacity:.55"></span>approx</span>';
+  box.appendChild(key);
+}
+
 /* ---------- boot ---------- */
 refreshSelectors();
 rebuildStages();
+buildSpeedChart();
 </script>
 </body>
 </html>

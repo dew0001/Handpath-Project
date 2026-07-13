@@ -103,12 +103,34 @@ reporting of GEARS-derived numbers; treat as approximate.*
 | Driver attack angle | **+5.2°** (steep up — notably positive) |
 | Club path (6-iron) | slightly left |
 
-### Players with per-player SPEED only (all 30)
+### Per-player DRIVER clubhead speed (measured — now in the app)
 
-PGA Tour ShotLink radar publishes measured **clubhead speed** per player per season
-(pgatour.com stats). This is real and citable — usable as a per-player scalar even
-when body positions aren't available. *Not fetched per-player in this pass; pull
-live when building profiles.*
+Gathered from PGA Tour ShotLink / TrackMan sources. **22 of 30 have a real number;
+8 had no reliable public source and are left blank (not estimated).** Tour-average
+band ≈ 113–116.5 mph (ShotLink ~116, TrackMan driver ~113). Full interactive chart
+is in the app ("Tour driver speed — measured" panel).
+
+| Player | mph | Confidence | Player | mph | Confidence |
+|---|---|---|---|---|---|
+| DeChambeau | 133.0 | measured (2021) | Åberg | 119.7 | measured |
+| J. Thomas | 124.5 | measured* | Jason Day | 119.5 | measured (older) |
+| Koepka | 124.3 | measured (~2022) | Niemann | 119.0 | measured |
+| Finau | 123.9 | measured | Scheffler | 118.8 | measured |
+| McIlroy | 123.5 | measured | Fitzpatrick | 118.1 | measured |
+| Schauffele | 123.0 | measured | Burns | 118.0 | approx |
+| Clark | 122.0 | measured | Bradley | 115.6 | measured |
+| Tiger Woods | 121.9 | measured (2018) | Matsuyama | 115.5 | measured |
+| Zalatoris | 120.0 | approx | Spieth | 115.0 | approx |
+| Rahm | 119.7 | measured | Fleetwood | 114.9 | measured |
+| | | | Morikawa | 114.1 | measured |
+| | | | Els | 113.0 | measured (2013) |
+| | | | Henley | 110.9 | measured |
+
+*J. Thomas 124.5 is on the high side — treat with mild caution.
+
+**No reliable public clubhead-speed source found (left blank in app):** Hovland,
+Cantlay, Homa, Sungjae Im, Conners, Theegala, Pendrith. (These often appear with
+driving *distance* but not a radar clubhead-speed mph.)
 
 ### Players with NO published position data (28 of 30)
 
