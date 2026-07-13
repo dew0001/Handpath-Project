@@ -104,6 +104,21 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 .stagebox{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;min-width:0}
 .stagebox svg{display:block;width:100%;height:auto}
 .stagelabel{position:absolute;top:12px;left:16px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+/* compare mode */
+#compareWrap{display:flex;flex-direction:column;gap:14px}
+#compareWrap.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:1000px){ #compareWrap.cols{grid-template-columns:1fr} }
+.cmp-slot{display:flex;flex-direction:column;gap:8px;min-width:0}
+.cmp-slot .cmp-head{font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px}
+.cmp-slot .cmp-head .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent);border-radius:4px;padding:1px 6px}
+.cmp-panels{display:grid;gap:10px}
+.cmp-panel{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;min-width:0;overflow:hidden}
+.cmp-panel svg{display:block;width:100%;height:auto}
+.cmp-scrub{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;flex-wrap:wrap}
+.cmp-scrub input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
+.cmp-scrub .pj{display:flex;gap:3px;flex-wrap:wrap}
+.cmp-scrub .pj button{padding:1px 5px;font-size:11px}
+.cmp-scrub .phase{font-size:12px;font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:1px 9px}
 
 /* ---------- transport ---------- */
 .transport{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:10px 14px;display:flex;flex-direction:column;gap:6px}
@@ -220,6 +235,23 @@ footer.app a{color:var(--accent)}
     </div>
 
     <div class="panel">
+      <h3>Compare side-by-side</h3>
+      <div class="stack">
+        <label class="row" style="gap:6px"><input type="checkbox" id="tglCompare"> Compare two swings</label>
+        <select id="compareSel" aria-label="Second swing" disabled></select>
+        <div id="resizeControls" class="stack" hidden>
+          <p class="hint" style="margin:0">Match golfer size/position (per swing):</p>
+          <label class="row" style="gap:6px;font-size:12px">A size <input type="range" id="axScale" min="0.6" max="1.6" step="0.01" value="1" style="flex:1"></label>
+          <label class="row" style="gap:6px;font-size:12px">A ↕ <input type="range" id="axDy" min="-120" max="120" step="1" value="0" style="flex:1"></label>
+          <label class="row" style="gap:6px;font-size:12px">B size <input type="range" id="bxScale" min="0.6" max="1.6" step="0.01" value="1" style="flex:1"></label>
+          <label class="row" style="gap:6px;font-size:12px">B ↕ <input type="range" id="bxDy" min="-120" max="120" step="1" value="0" style="flex:1"></label>
+          <button id="btnResizeReset" style="align-self:flex-start">Reset alignment</button>
+        </div>
+        <p class="hint" style="margin:0">Each swing gets its own scrubber, so you can line up P1-to-P1 even when the videos differ in speed.</p>
+      </div>
+    </div>
+
+    <div class="panel">
       <h3>Display</h3>
       <div class="stack">
         <label class="row"><input type="checkbox" id="tglClub" checked> Clubhead path</label>
@@ -227,7 +259,7 @@ footer.app a{color:var(--accent)}
         <label class="row"><input type="checkbox" id="tglVelocity"> Velocity coloring (hand speed)</label>
         <label class="row"><input type="checkbox" id="tglPlane"> Shaft plane (DTL)</label>
         <label class="row"><input type="checkbox" id="tglVideo" checked> Video overlay (digitized)</label>
-        <label class="row"><input type="checkbox" id="tglGrid" checked> 12″ grid</label>
+        <label class="row"><input type="checkbox" id="tglGrid" checked> 6″ grid</label>
       </div>
     </div>
 
@@ -286,7 +318,9 @@ footer.app a{color:var(--accent)}
       </div>
     </div>
 
-    <div class="transport">
+    <div id="compareWrap" hidden></div>
+
+    <div class="transport" id="soloTransport">
       <div class="ptrack" id="ptrack"></div>
       <div class="controls">
         <button id="btnPlay" class="primary" style="min-width:74px">Play</button>
@@ -1184,10 +1218,11 @@ $("scrub").addEventListener("input",e=>{ stopPlay(); study.pos=e.target.value/10
 
 $("primarySel").addEventListener("change",e=>{
   study.primary=e.target.value||null; if (study.primary) study.overlays.delete(study.primary);
-  study.pos=0; stopPlay(); refreshSelectors(); rebuildStages();
+  study.pos=0; stopPlay(); refreshSelectors();
+  if (cmp.on){ if(cmp.B===study.primary) cmp.B=null; refreshCompareSel(); renderCompare(); } else rebuildStages();
 });
 for (const id of ["tglClub","tglGolfer","tglVelocity","tglPlane","tglGrid","tglVideo"])
-  $(id).addEventListener("change",rebuildStages);
+  $(id).addEventListener("change",()=>{ if(cmp.on){ drawCmpSlot("A"); drawCmpSlot("B"); } else rebuildStages(); });
 
 document.querySelectorAll(".viewtabs button").forEach(b=>{
   b.addEventListener("click",()=>{
@@ -1196,7 +1231,7 @@ document.querySelectorAll(".viewtabs button").forEach(b=>{
     $("faceBox").hidden = study.view==="dtl";
     $("dtlBox").hidden = study.view==="face";
     $("stages").classList.toggle("both", study.view==="both");
-    rebuildStages();
+    if (cmp.on) renderCompare(); else rebuildStages();
   });
 });
 
@@ -1960,6 +1995,142 @@ $("modeStudy").addEventListener("click",()=>setMode("study"));
 $("modeDigitize").addEventListener("click",()=>setMode("dig"));
 window.addEventListener("resize",()=>{ sizeDigLayout(); if(!$("digMain").hidden && !$("digMedia").hasAttribute("hidden")){ fitMediaToStage(); redrawOverlay(); } });
 sizeDigLayout();
+
+/* =================================================================
+   COMPARE MODE — two swings side by side, each with its own scrubber
+   ================================================================= */
+const cmp = { on:false, B:null, posA:0, posB:0,
+  xf:{ A:{s:1,dy:0}, B:{s:1,dy:0} }, vids:{A:null,B:null} };
+const slotSwingId = (slot)=> slot==="A"?study.primary:cmp.B;
+const slotPos = (slot)=> slot==="A"?cmp.posA:cmp.posB;
+const setSlotPos = (slot,v)=>{ if(slot==="A") cmp.posA=v; else cmp.posB=v; };
+
+function ensureCompareVideos(){
+  for (const slot of ["A","B"]){
+    const id=slotSwingId(slot), sw=swingById(id); let rec=cmp.vids[slot];
+    if (!id || !sw || !sw.hasVideo || !sw.cal){ if(rec&&rec.url)URL.revokeObjectURL(rec.url); cmp.vids[slot]=null; continue; }
+    if (rec && rec.id===id) continue;
+    if (rec&&rec.url) URL.revokeObjectURL(rec.url);
+    rec={ id, cal:sw.cal, capView:sw.view, ready:false, el:null, url:null };
+    cmp.vids[slot]=rec;
+    idbVideo("get", id).then(blob=>{
+      if(!blob || cmp.vids[slot]!==rec) return;
+      const v=document.createElement("video"); v.muted=true; v.playsInline=true; v.preload="auto"; v.style.pointerEvents="none";
+      v.style.width=rec.cal.vidW+"px"; v.style.height=rec.cal.vidH+"px";
+      rec.url=URL.createObjectURL(blob); v.src=rec.url;
+      v.addEventListener("loadeddata",()=>{ rec.el=v; rec.ready=true; drawCmpSlot(slot); },{once:true});
+    });
+  }
+}
+function insertVideoRec(target, rec, view){
+  if(!rec||!rec.ready||rec.capView!==view) return;
+  const {pxPerIn,groundY,centerX,dir,vidW,vidH}=rec.cal;
+  const T=view==="face"?FACE:DTL;
+  const a=dir*T.s/pxPerIn, d=T.s/pxPerIn, e=T.cx-a*centerX, f=T.groundY-d*groundY;
+  const g=el("g",{transform:`matrix(${a} 0 0 ${d} ${e} ${f})`,opacity:0.6},target);
+  const fo=el("foreignObject",{x:0,y:0,width:vidW,height:vidH},g);
+  fo.appendChild(rec.el);
+}
+function syncCmpVideo(slot){
+  const rec=cmp.vids[slot]; if(!rec||!rec.ready) return;
+  const comp=compiled(slotSwingId(slot)); if(!comp) return;
+  const i=sampleIndex(comp, slotPos(slot));
+  const t=(rec.cal.vidT0||0)+comp.S.t[i];
+  if(Math.abs(rec.el.currentTime-t)>0.02){ try{rec.el.currentTime=t;}catch(_){} }
+}
+function drawPanel(svg, slot, view){
+  svg.textContent="";
+  drawGrid(svg, view);
+  const comp=compiled(slotSwingId(slot)); if(!comp) return;
+  const xf=cmp.xf[slot], T=view==="face"?FACE:DTL;
+  const xg=el("g",{transform:`translate(${T.cx} ${T.groundY+xf.dy}) scale(${xf.s}) translate(${-T.cx} ${-T.groundY})`},svg);
+  insertVideoRec(xg, cmp.vids[slot], view);
+  renderSwingInto(xg, view, comp, { club:$("tglClub").checked, velocity:$("tglVelocity").checked });
+}
+function updateCmpPhase(slot){
+  const el2=$(`cmp_phase_${slot}`); if(!el2) return;
+  const comp=compiled(slotSwingId(slot)); if(!comp){ el2.textContent="—"; return; }
+  const i=sampleIndex(comp, slotPos(slot));
+  const ph=comp.S.phase?comp.S.phase[i]:null;
+  el2.textContent = ph!=null ? `P${Math.max(1,Math.min(10,Math.floor(ph+1e-6)))} · ${PHASES[Math.max(1,Math.min(10,Math.floor(ph+1e-6)))-1][1]}` : fmt(comp.S.t[i],2)+" s";
+}
+function drawCmpSlot(slot){
+  const views = study.view==="both"?["face","dtl"]:[study.view];
+  for (const v of views){ const svg=$(`cmp_${slot}_${v}`); if(svg) drawPanel(svg,slot,v); }
+  syncCmpVideo(slot); updateCmpPhase(slot);
+}
+function buildCmpScrubber(slot){
+  const comp=compiled(slotSwingId(slot));
+  const wrap=document.createElement("div"); wrap.className="cmp-scrub";
+  const pj=document.createElement("div"); pj.className="pj";
+  const rng=document.createElement("input"); rng.type="range"; rng.min=0; rng.max=1000; rng.step=1; rng.value=Math.round(slotPos(slot)*1000);
+  if (comp && comp.S.phase[0]!=null){
+    const t0=comp.S.t[0], t1=comp.S.t[DENSE-1];
+    for (let p=1;p<=10;p++){
+      const idx=comp.S.phase.findIndex(v=>v>=p); if(idx<0) continue;
+      const frac=(comp.S.t[idx]-t0)/(t1-t0);
+      const b=document.createElement("button"); b.textContent="P"+p; b.title=PHASES[p-1][1];
+      b.addEventListener("click",()=>{ setSlotPos(slot,frac); rng.value=Math.round(frac*1000); drawCmpSlot(slot); });
+      pj.appendChild(b);
+    }
+  }
+  rng.addEventListener("input",()=>{ setSlotPos(slot, +rng.value/1000); drawCmpSlot(slot); });
+  const phase=document.createElement("span"); phase.className="phase"; phase.id=`cmp_phase_${slot}`;
+  wrap.append(pj, rng, phase);
+  return wrap;
+}
+function renderCompare(){
+  const wrap=$("compareWrap"); wrap.textContent="";
+  const views = study.view==="both"?["face","dtl"]:[study.view];
+  wrap.className = study.view==="both" ? "" : "cols";
+  for (const slot of ["A","B"]){
+    const id=slotSwingId(slot), sw=swingById(id);
+    const slotEl=document.createElement("div"); slotEl.className="cmp-slot";
+    const hd=document.createElement("div"); hd.className="cmp-head";
+    hd.innerHTML=`<span class="tag">${slot}</span> ${sw?sw.name:"— pick a swing —"}`;
+    slotEl.appendChild(hd);
+    const panels=document.createElement("div"); panels.className="cmp-panels";
+    panels.style.gridTemplateColumns = views.length>1?"1fr 1fr":"1fr";
+    for (const v of views){
+      const panel=document.createElement("div"); panel.className="cmp-panel";
+      const lbl=document.createElement("span"); lbl.className="stagelabel"; lbl.textContent=v==="face"?"Face-on":"Down-the-line";
+      const svg=document.createElementNS(SVGNS,"svg"); svg.id=`cmp_${slot}_${v}`;
+      svg.setAttribute("viewBox", v==="face"?"0 0 760 520":"0 0 620 520");
+      panel.append(lbl,svg); panels.appendChild(panel);
+    }
+    slotEl.appendChild(panels);
+    slotEl.appendChild(buildCmpScrubber(slot));
+    wrap.appendChild(slotEl);
+  }
+  ensureCompareVideos();
+  drawCmpSlot("A"); drawCmpSlot("B");
+}
+function refreshCompareSel(){
+  const sel=$("compareSel"); sel.textContent="";
+  const opts=allSwings().filter(s=>s.id!==study.primary);
+  if (!opts.length){ const o=document.createElement("option"); o.value=""; o.textContent="need another swing"; sel.appendChild(o); }
+  for (const s of opts){ const o=document.createElement("option"); o.value=s.id; o.textContent=s.name; sel.appendChild(o); }
+  if (cmp.B && opts.some(s=>s.id===cmp.B)) sel.value=cmp.B;
+  else { cmp.B = opts[0]?opts[0].id:null; sel.value=cmp.B||""; }
+}
+function setCompare(on){
+  cmp.on=on;
+  $("compareSel").disabled=!on;
+  $("stages").hidden=on; $("soloTransport").hidden=on; $("compareWrap").hidden=!on;
+  if (on){ stopPlay(); refreshCompareSel(); $("resizeControls").hidden=!cmp.B; renderCompare(); }
+  else { $("resizeControls").hidden=true; rebuildStages(); }
+}
+$("tglCompare").addEventListener("change",e=>setCompare(e.target.checked));
+$("compareSel").addEventListener("change",e=>{ cmp.B=e.target.value||null; $("resizeControls").hidden=!cmp.B; renderCompare(); });
+$("btnResizeReset").addEventListener("click",()=>{
+  cmp.xf.A={s:1,dy:0}; cmp.xf.B={s:1,dy:0};
+  $("axScale").value=1; $("axDy").value=0; $("bxScale").value=1; $("bxDy").value=0;
+  drawCmpSlot("A"); drawCmpSlot("B");
+});
+$("axScale").addEventListener("input",e=>{ cmp.xf.A.s=+e.target.value; drawCmpSlot("A"); });
+$("axDy").addEventListener("input",e=>{ cmp.xf.A.dy=+e.target.value; drawCmpSlot("A"); });
+$("bxScale").addEventListener("input",e=>{ cmp.xf.B.s=+e.target.value; drawCmpSlot("B"); });
+$("bxDy").addEventListener("input",e=>{ cmp.xf.B.dy=+e.target.value; drawCmpSlot("B"); });
 
 /* ---------- boot ---------- */
 refreshSelectors();
