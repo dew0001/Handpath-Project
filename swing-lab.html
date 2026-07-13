@@ -1,0 +1,1357 @@
+<title>Handpath Lab — Swing Study Instrument</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* ---------- design tokens ---------- */
+:root{
+  --bg:#F6F7F4; --panel:#FFFFFF; --panel2:#EFF2EE; --ink:#1C2622; --muted:#5C6862;
+  --line:#DFE4DE; --accent:#1D7A43; --accent-ink:#FFFFFF; --stage:#FFFFFF;
+  --grid:#E7EBE5; --grid-major:#D8DED6; --ground:#8FA394;
+  --c-back:#2F6FD0; --c-down:#B96A00; --c-club:#8A4FD0;
+  --c-ov1:#0E8A6D; --c-ov2:#C0417B; --c-ov3:#5F6B7A;
+  --golfer:#93A09B; --ball-fill:#FFFFFF; --ball-line:#7A867F;
+  --danger:#B4382F;
+  --shadow:0 1px 2px rgba(20,30,25,.06),0 4px 14px rgba(20,30,25,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0E1412; --panel:#17201D; --panel2:#1D2723; --ink:#E6ECE8; --muted:#92A099;
+    --line:#28332E; --accent:#37B06A; --accent-ink:#08130C; --stage:#12171A;
+    --grid:#1C2426; --grid-major:#26302F; --ground:#4A5A50;
+    --c-back:#4585E8; --c-down:#CA7C0F; --c-club:#A272E8;
+    --c-ov1:#1EA98A; --c-ov2:#D4619B; --c-ov3:#8B98A8;
+    --golfer:#5E6D66; --ball-fill:#E9EDEA; --ball-line:#6E7B73;
+    --danger:#E06A5F;
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1412; --panel:#17201D; --panel2:#1D2723; --ink:#E6ECE8; --muted:#92A099;
+  --line:#28332E; --accent:#37B06A; --accent-ink:#08130C; --stage:#12171A;
+  --grid:#1C2426; --grid-major:#26302F; --ground:#4A5A50;
+  --c-back:#4585E8; --c-down:#CA7C0F; --c-club:#A272E8;
+  --c-ov1:#1EA98A; --c-ov2:#D4619B; --c-ov3:#8B98A8;
+  --golfer:#5E6D66; --ball-fill:#E9EDEA; --ball-line:#6E7B73;
+  --danger:#E06A5F; --shadow:none;
+}
+:root[data-theme="light"]{
+  --bg:#F6F7F4; --panel:#FFFFFF; --panel2:#EFF2EE; --ink:#1C2622; --muted:#5C6862;
+  --line:#DFE4DE; --accent:#1D7A43; --accent-ink:#FFFFFF; --stage:#FFFFFF;
+  --grid:#E7EBE5; --grid-major:#D8DED6; --ground:#8FA394;
+  --c-back:#2F6FD0; --c-down:#B96A00; --c-club:#8A4FD0;
+  --c-ov1:#0E8A6D; --c-ov2:#C0417B; --c-ov3:#5F6B7A;
+  --golfer:#93A09B; --ball-fill:#FFFFFF; --ball-line:#7A867F;
+  --danger:#B4382F;
+  --shadow:0 1px 2px rgba(20,30,25,.06),0 4px 14px rgba(20,30,25,.05);
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:14px/1.5 "Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif;
+}
+.mono{font-family:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button:focus-visible,input:focus-visible,select:focus-visible,label:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+button.ghosted{opacity:.55}
+input[type=text],input[type=number],select{
+  font:inherit;color:var(--ink);background:var(--panel2);border:1px solid var(--line);
+  border-radius:6px;padding:4px 8px;max-width:100%;
+}
+input[type=range]{accent-color:var(--accent)}
+label{font-size:12.5px;color:var(--muted)}
+
+/* ---------- shell ---------- */
+header.app{
+  display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);
+}
+.wordmark{display:flex;align-items:baseline;gap:10px}
+.wordmark .mark{font-weight:800;font-size:19px;letter-spacing:.14em;text-transform:uppercase}
+.wordmark .mark em{font-style:normal;color:var(--accent)}
+.wordmark .tag{font-size:12px;color:var(--muted);letter-spacing:.05em}
+nav.modes{display:flex;gap:6px;margin-left:auto}
+nav.modes button{border-radius:999px;padding:6px 16px}
+nav.modes button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+
+main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16px 20px;max-width:1480px;margin:0 auto}
+@media (max-width:900px){ main{grid-template-columns:1fr} }
+.rail{display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px}
+.panel h3{margin:0 0 8px;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stack{display:flex;flex-direction:column;gap:8px}
+.hint{font-size:12px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.swatch{width:14px;height:4px;border-radius:2px;display:inline-block}
+.swatch.dash{background:repeating-linear-gradient(90deg,currentColor 0 3px,transparent 3px 6px)}
+
+/* ---------- stage ---------- */
+.stagewrap{display:flex;flex-direction:column;gap:12px;min-width:0}
+.viewtabs{display:flex;gap:6px}
+.viewtabs button[aria-pressed="true"]{background:var(--panel);border-color:var(--muted);font-weight:600}
+.stages{display:grid;gap:12px;grid-template-columns:1fr}
+.stages.both{grid-template-columns:1fr 1fr}
+@media (max-width:1100px){ .stages.both{grid-template-columns:1fr} }
+.stagebox{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;min-width:0}
+.stagebox svg{display:block;width:100%;height:auto}
+.stagelabel{position:absolute;top:12px;left:16px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+
+/* ---------- transport ---------- */
+.transport{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:10px 14px;display:flex;flex-direction:column;gap:6px}
+.transport .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.transport input[type=range]{flex:1;min-width:160px}
+.ptrack{position:relative;height:20px;margin:0 2px}
+.ptrack .tick{position:absolute;top:0;width:1px;height:7px;background:var(--muted);opacity:.7}
+.ptrack .ticklabel{position:absolute;top:7px;transform:translateX(-50%);font-size:10px;color:var(--muted);cursor:pointer;user-select:none}
+.ptrack .ticklabel:hover{color:var(--ink)}
+.readout{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
+.readout b{font-weight:700}
+.readout .phasechip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 12px;font-weight:600}
+
+/* ---------- metrics ---------- */
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.metric{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.metric .v{font-size:17px;font-weight:700}
+.metric .k{font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.badge{display:inline-block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);color:var(--muted);border-radius:4px;padding:1px 5px;vertical-align:middle}
+.badge.model{border-color:var(--c-back);color:var(--c-back)}
+.badge.real{border-color:var(--accent);color:var(--accent)}
+
+/* players list */
+.playeritem{display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px dashed var(--line)}
+.playeritem:last-child{border-bottom:none}
+.playeritem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.playeritem button.x{padding:1px 7px;font-size:11px;color:var(--danger)}
+table.datatable{border-collapse:collapse;font-size:12px;width:100%}
+table.datatable th,table.datatable td{border:1px solid var(--line);padding:2px 6px;text-align:right}
+table.datatable th{color:var(--muted);font-weight:600}
+.scrollx{overflow-x:auto}
+
+/* ---------- digitizer ---------- */
+.dig-stage{position:relative;background:var(--stage);border:1px solid var(--line);border-radius:10px;overflow:hidden;min-height:220px}
+.dig-stage video,.dig-stage img{display:block;width:100%;height:auto}
+.dig-stage svg.overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+.dig-empty{padding:60px 20px;text-align:center;color:var(--muted)}
+.kbtns{display:flex;flex-wrap:wrap;gap:6px}
+.kbtns button[aria-pressed="true"]{border-color:transparent;font-weight:700;color:var(--accent-ink)}
+.steps{margin:0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+.steps li.done{color:var(--accent)}
+.steps li.now{color:var(--ink);font-weight:600}
+.framerow{display:flex;gap:8px;align-items:center;font-size:12.5px;border-bottom:1px dashed var(--line);padding:3px 0}
+.framerow .dots{display:flex;gap:3px}
+.framerow .dot{width:9px;height:9px;border-radius:50%;background:var(--line)}
+.framerow .dot.on{background:var(--accent)}
+.frameslist{max-height:220px;overflow-y:auto}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s}
+.toast.show{opacity:.95}
+@media (prefers-reduced-motion: reduce){ .toast{transition:none} }
+.notice{font-size:12px;color:var(--muted);border-left:3px solid var(--c-down);padding:4px 10px;background:var(--panel2);border-radius:0 6px 6px 0}
+footer.app{padding:14px 20px 26px;max-width:1480px;margin:0 auto;color:var(--muted);font-size:12px}
+footer.app a{color:var(--accent)}
+</style>
+
+<header class="app">
+  <div class="wordmark">
+    <span class="mark">Handpath<em>·</em>Lab</span>
+    <span class="tag">swing study instrument — hand path / club path / P-system</span>
+  </div>
+  <nav class="modes" aria-label="Mode">
+    <button id="modeStudy" aria-pressed="true">Study</button>
+    <button id="modeDigitize" aria-pressed="false">Digitize</button>
+  </nav>
+</header>
+
+<!-- ============================ STUDY MODE ============================ -->
+<main id="studyMain">
+  <div class="rail">
+    <div class="panel">
+      <h3>Swing under study</h3>
+      <div class="stack">
+        <select id="primarySel" aria-label="Primary swing"></select>
+        <div id="primaryMeta" class="hint"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Overlays</h3>
+      <div id="overlayList"></div>
+      <p class="hint" style="margin:8px 0 0">Overlay up to 3 comparison swings. Dashed = backswing, solid = downswing &amp; through.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Display</h3>
+      <div class="stack">
+        <label class="row"><input type="checkbox" id="tglClub" checked> Clubhead path</label>
+        <label class="row"><input type="checkbox" id="tglGolfer" checked> Golfer (hips · shoulders · head)</label>
+        <label class="row"><input type="checkbox" id="tglVelocity"> Velocity coloring (hand speed)</label>
+        <label class="row"><input type="checkbox" id="tglPlane"> Shaft plane (DTL)</label>
+        <label class="row"><input type="checkbox" id="tglGrid" checked> 12″ grid</label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Live metrics</h3>
+      <div class="metrics">
+        <div class="metric"><div class="v mono" id="mHands">—</div><div class="k">hands x / y (in)</div></div>
+        <div class="metric"><div class="v mono" id="mDepth">—</div><div class="k">hand depth z (in)</div></div>
+        <div class="metric"><div class="v mono" id="mHandSpd">—</div><div class="k">hand speed</div></div>
+        <div class="metric"><div class="v mono" id="mClubSpd">—</div><div class="k">clubhead speed</div></div>
+      </div>
+      <div id="impactStats" class="hint" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Library</h3>
+      <div id="playersList"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnExport">Export JSON</button>
+        <button id="btnImport">Import JSON</button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+      </div>
+      <p class="hint" style="margin:8px 0 0">Digitized swings are saved in this browser (localStorage). Export to move them anywhere.</p>
+    </div>
+
+    <div class="panel">
+      <details>
+        <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">Anchor data table (primary swing)</summary>
+        <div class="scrollx" style="margin-top:8px"><table class="datatable" id="anchorTable"></table></div>
+      </details>
+    </div>
+  </div>
+
+  <div class="stagewrap">
+    <div class="row" style="justify-content:space-between">
+      <div class="viewtabs" role="tablist" aria-label="Camera view">
+        <button data-view="face" aria-pressed="true">Face-on</button>
+        <button data-view="dtl" aria-pressed="false">Down-the-line</button>
+        <button data-view="both" aria-pressed="false">Both</button>
+      </div>
+      <div class="row" id="legend">
+        <span class="chip"><span class="swatch" style="background:var(--c-back)"></span>backswing</span>
+        <span class="chip"><span class="swatch" style="background:var(--c-down)"></span>downswing → finish</span>
+        <span class="chip"><span class="swatch" style="background:var(--c-club)"></span>clubhead</span>
+      </div>
+    </div>
+
+    <div class="stages" id="stages">
+      <div class="stagebox" id="faceBox">
+        <span class="stagelabel">Face-on · caddie view</span>
+        <svg id="faceSvg" viewBox="0 0 760 520" role="img" aria-label="Face-on swing path plot"></svg>
+      </div>
+      <div class="stagebox" id="dtlBox" hidden>
+        <span class="stagelabel">Down-the-line</span>
+        <svg id="dtlSvg" viewBox="0 0 620 520" role="img" aria-label="Down-the-line swing path plot"></svg>
+      </div>
+    </div>
+
+    <div class="transport">
+      <div class="ptrack" id="ptrack"></div>
+      <div class="controls">
+        <button id="btnPlay" class="primary" style="min-width:74px">Play</button>
+        <select id="playSpeed" aria-label="Playback speed">
+          <option value="0.15">0.15×</option>
+          <option value="0.3" selected>0.3×</option>
+          <option value="0.6">0.6×</option>
+          <option value="1">1× real time</option>
+        </select>
+        <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Scrub swing">
+        <span class="mono hint" id="tReadout" style="min-width:72px;text-align:right">0.00 s</span>
+      </div>
+      <div class="readout">
+        <span class="phasechip" id="phaseChip">P1 · Address</span>
+        <span class="hint" id="phaseDesc"></span>
+      </div>
+    </div>
+
+    <div class="notice" id="honesty">
+      Built-in swings are <b>models</b> — representative paths authored to match published hub-path research
+      (non-circular arc, changing radius, downswing inside the backswing). They are not measured pro data.
+      To study a real pro: digitize their footage in <b>Digitize</b> mode, or run the AI pipeline
+      (<span class="mono">pipeline/track_swing.py</span>) on a video and import the JSON.
+    </div>
+  </div>
+</main>
+
+<!-- ============================ DIGITIZE MODE ============================ -->
+<main id="digMain" hidden>
+  <div class="rail">
+    <div class="panel">
+      <h3>1 · Source</h3>
+      <div class="stack">
+        <div class="row">
+          <button id="btnLoadVideo" class="primary">Load video…</button>
+          <button id="btnLoadImage">Load image…</button>
+        </div>
+        <input type="file" id="videoFile" accept="video/*" hidden>
+        <input type="file" id="imageFile" accept="image/*" hidden>
+        <div class="row">
+          <label>View
+            <select id="digView">
+              <option value="face">Face-on</option>
+              <option value="dtl">Down-the-line</option>
+            </select>
+          </label>
+          <label>Target is
+            <select id="digDir">
+              <option value="1">screen-right</option>
+              <option value="-1">screen-left</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label>Video fps <input type="number" id="digFps" value="30" min="10" max="240" style="width:64px"></label>
+          <label>Golfer height (in) <input type="number" id="digHeight" value="71" min="48" max="84" style="width:64px"></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>2 · Calibrate</h3>
+      <ol class="steps" id="calSteps">
+        <li data-step="0">Click top of the golfer's head (at address)</li>
+        <li data-step="1">Click the ground at the golfer's feet</li>
+        <li data-step="2">Click the body center (sternum) at address</li>
+      </ol>
+      <div class="row" style="margin-top:8px">
+        <button id="btnCalibrate">Start calibration</button>
+        <span class="hint mono" id="calReadout">not calibrated</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>3 · Track points</h3>
+      <div class="kbtns" id="kpBtns"></div>
+      <p class="hint" style="margin:8px 0 0">Step frames, click the selected point on each frame. Same framing keeps calibration valid.</p>
+      <div class="row" style="margin-top:8px">
+        <label>Tag phase
+          <select id="digPhase">
+            <option value="">—</option>
+          </select>
+        </label>
+        <button id="btnUndo">Undo click</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>4 · Save</h3>
+      <div class="stack">
+        <input type="text" id="digName" placeholder="Name — e.g. Rory McIlroy · Driver · face-on">
+        <div class="row">
+          <label>Club <select id="digClub"><option>Driver</option><option selected>7-iron</option><option>Wedge</option><option>Other</option></select></label>
+          <button id="btnSavePlayer" class="primary">Save to library</button>
+        </div>
+        <p class="hint">Needs calibration + ≥ 6 frames with a hands point. Saved swings appear in Study mode.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Captured frames</h3>
+      <div class="frameslist" id="framesList"><p class="hint">No frames yet.</p></div>
+    </div>
+  </div>
+
+  <div class="stagewrap">
+    <div class="dig-stage" id="digStage">
+      <div class="dig-empty" id="digEmpty">
+        <p><b>Load a face-on or down-the-line video</b> (or a screenshot sequence).</p>
+        <p>Step through frames with ←/→, calibrate once, then click hand / clubhead / hip / shoulder / head positions per frame.</p>
+        <p>Prefer automation? Run <span class="mono">pipeline/track_swing.py</span> on the video — MediaPipe pose-tracks it and auto-tags P positions — then import the JSON in Study mode.</p>
+      </div>
+      <video id="digVideo" hidden playsinline muted></video>
+      <img id="digImage" hidden alt="digitizing frame">
+      <svg class="overlay" id="digOverlay" hidden></svg>
+    </div>
+    <div class="transport">
+      <div class="controls">
+        <button id="fPrev5">−5f</button><button id="fPrev">−1f</button>
+        <button id="fNext">+1f</button><button id="fNext5">+5f</button>
+        <input type="range" id="digScrub" min="0" max="1000" value="0" step="1" aria-label="Video position">
+        <span class="mono hint" id="digTime" style="min-width:88px;text-align:right">0.000 s</span>
+      </div>
+      <p class="hint" style="margin:0">Keys: ← → step 1 frame · Shift+←/→ step 5 · number keys 1–5 pick the tracked point.</p>
+    </div>
+  </div>
+</main>
+
+<footer class="app">
+  Coordinate system: x = inches from body center (+ toward target) · y = inches above ground · z = inches from body toward the ball line.
+  P-system: P1 Address → P10 Finish. Digitized paths are approximate — lens distortion and off-square camera angles bend the trace.
+</footer>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+"use strict";
+/* =================================================================
+   Handpath Lab — single-file, no dependencies.
+   World coords (inches): x + toward target, y up from ground,
+   z + from body center toward the ball line. RH golfer.
+   ================================================================= */
+
+const $ = (id) => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+const PHASES = [
+  ["P1","Address","Static start; hands roughly centered, weight balanced."],
+  ["P2","Takeaway","Club shaft parallel to ground, first move wide."],
+  ["P3","Backswing","Lead arm parallel; wrists setting, hands past trail thigh."],
+  ["P4","Top","Maximum hand height and depth; transition begins from the ground up."],
+  ["P5","Transition","Lead arm back to parallel; pelvis already shifting targetward — hands drop inside the backswing arc."],
+  ["P6","Delivery","Shaft parallel in the downswing; hands near trail thigh, club shallow behind."],
+  ["P7","Impact","Hands ahead of the ball; pelvis open, shoulders squaring, maximum clubhead speed."],
+  ["P8","Release","Shaft parallel post-impact; full extension of both arms."],
+  ["P9","Follow-through","Lead arm parallel through; body rotating into the target."],
+  ["P10","Finish","Balanced on the lead side, chest at the target."],
+];
+
+/* ---------- helpers ---------- */
+function el(tag, attrs, parent){
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function fmt(n, d=1){ return (n==null||Number.isNaN(n)) ? "—" : n.toFixed(d); }
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._h); toast._h = setTimeout(()=>t.classList.remove("show"), 2600);
+}
+const IN_S_TO_MPH = 1/17.6; // in/s -> mph
+
+/* Catmull-Rom over an array of numbers, uniform knots, clamped ends. */
+function crSample(vals, u){
+  const n = vals.length;
+  if (n === 1) return vals[0];
+  const i = Math.min(Math.floor(u), n - 2), f = u - i;
+  const p0 = vals[Math.max(0, i-1)], p1 = vals[i], p2 = vals[i+1], p3 = vals[Math.min(n-1, i+2)];
+  const f2 = f*f, f3 = f2*f;
+  return 0.5*((2*p1) + (-p0+p2)*f + (2*p0-5*p1+4*p2-p3)*f2 + (-p0+3*p1-3*p2+p3)*f3);
+}
+
+/* =================================================================
+   MODEL SWINGS (authored, labeled as models — not measured data)
+   anchor: t (s), p (phase 1-10, optional), h=[x,y,z], c=[x,y,z],
+   body: sway, hipT, shT, shTilt (deg, + = lead shoulder higher), hdX, hdY
+   ================================================================= */
+function A(t,p,h,c,sway,hipT,shT,shTilt,hdX,hdY){ return {t,p,h,c,sway,hipT,shT,shTilt,hdX,hdY}; }
+
+const MODEL_IRON = {
+  id:"model-7i", name:"Tour model · 7-iron", club:"7-iron", view:"3d", model:true,
+  height:71, clubLen:37, ballX:2, ballZ:32, stance:10.5,
+  anchors:[
+    A(0.00, 1,[  1.0,33.0, 13.0],[   2,  1.5, 32],  0.0,  0,   0,  6,  0.0, 66),
+    A(0.12, 0,[ -4.0,33.2, 12.5],[  -9,  2.0, 30], -0.4,  5,  10,  5, -0.3, 66),
+    A(0.24, 2,[-11.0,35.0, 11.0],[ -27,  8.0, 22], -0.9, 13,  26,  2, -0.8, 66),
+    A(0.35, 0,[-16.0,40.0,  9.0],[ -34, 22.0, 12], -1.4, 22,  46, -3, -1.3, 65.8),
+    A(0.45, 3,[-19.8,47.0,  7.0],[ -33, 44.0,  3], -1.9, 30,  66, -8, -1.7, 65.7),
+    A(0.55, 0,[-21.8,54.0,  5.0],[ -24, 62.0, -3], -2.2, 37,  81,-11, -2.0, 65.6),
+    A(0.66, 4,[-22.5,61.0,  4.0],[   3, 79.0, -8], -2.5, 43,  93,-13, -2.3, 65.6),
+    A(0.74, 5,[-20.0,55.0,  6.0],[  -6, 76.0, -5],  0.2, 31,  86,-12, -2.6, 65.4),
+    A(0.80, 0,[-16.0,47.0,  8.2],[ -18, 66.0,  0],  2.0, 18,  72,-10, -2.8, 65.3),
+    A(0.86, 6,[-10.0,38.0, 10.6],[ -30, 48.0,  7],  3.5,  2,  50, -7, -3.0, 65.2),
+    A(0.905,0,[ -4.0,33.0, 12.2],[ -32, 26.0, 17],  4.2,-14,  30, -3, -3.0, 65.2),
+    A(0.92, 0,[ -1.0,32.0, 12.8],[ -22, 10.0, 25],  4.5,-24,  12,  3, -3.0, 65.2),
+    A(0.933,0,[  1.5,31.0, 13.3],[  -8,  1.8, 31.2],4.8,-32, -8,  8, -3.0, 65.2),
+    A(0.94, 7,[  4.0,30.5, 13.6],[   2,  0.8, 32],  5.0,-38, -18, 10, -3.0, 65.2),
+    A(0.951,0,[  7.0,31.5, 13.2],[  16,  0.7, 32.2],5.2,-42, -26, 11, -2.8, 65.2),
+    A(0.975,8,[ 13.0,34.5, 11.5],[  38, 13.0, 24],  5.5,-48, -38, 12, -2.4, 65.3),
+    A(1.05, 0,[ 18.0,42.0,  9.0],[  36, 38.0, 10],  5.8,-55, -58, 13, -1.4, 65.4),
+    A(1.13, 9,[ 21.0,52.0,  5.0],[  27, 80.0, -4],  6.1,-60, -76, 14,  0.2, 65.6),
+    A(1.25, 0,[ 18.5,60.0,  0.0],[   8, 88.0,-14],  6.4,-64, -88, 15,  2.0, 65.8),
+    A(1.42,10,[ 14.0,65.0, -4.0],[ -10, 72.0,-18],  6.6,-68, -96, 15,  4.0, 66),
+  ],
+};
+
+const MODEL_DRIVER = {
+  id:"model-dr", name:"Tour model · Driver", club:"Driver", view:"3d", model:true,
+  height:71, clubLen:45.5, ballX:12, ballZ:38, stance:12.5,
+  anchors:[
+    A(0.00, 1,[  0.0,34.5, 14.0],[   8,  2.0, 38],  0.0,  0,   4,  8,  0.0, 66),
+    A(0.14, 0,[ -6.0,34.6, 13.5],[ -12,  4.0, 35], -0.6,  7,  14,  6, -0.5, 66),
+    A(0.28, 2,[-13.0,36.5, 12.0],[ -33, 12.0, 26], -1.2, 16,  32,  2, -1.2, 66),
+    A(0.40, 0,[-19.0,42.0,  9.5],[ -40, 28.0, 12], -2.0, 26,  54, -4, -2.0, 65.8),
+    A(0.52, 3,[-23.0,50.0,  7.0],[ -38, 52.0,  0], -2.8, 35,  74, -9, -2.6, 65.7),
+    A(0.63, 0,[-25.0,58.0,  5.0],[ -25, 72.0, -6], -3.2, 43,  90,-12, -3.1, 65.6),
+    A(0.75, 4,[-25.5,66.0,  4.0],[   7, 88.0,-12], -3.6, 49, 103,-14, -3.6, 65.6),
+    A(0.83, 5,[-23.0,59.0,  6.0],[  -3, 84.0, -8], -0.4, 35,  95,-13, -4.0, 65.4),
+    A(0.89, 0,[-18.0,50.0,  8.5],[ -19, 72.0, -1],  2.4, 21,  79,-11, -4.3, 65.3),
+    A(0.95, 6,[-11.0,40.0, 11.0],[ -34, 52.0,  8],  4.4,  4,  56, -8, -4.5, 65.2),
+    A(1.00, 0,[ -4.0,34.5, 13.0],[ -28, 16.0, 24],  5.4,-15,  34, -3, -4.6, 65.2),
+    A(1.008,0,[ -0.5,33.8, 13.3],[ -16,  7.0, 29],  5.7,-24,  14,  3, -4.65,65.2),
+    A(1.022,0,[  3.0,33.2, 13.6],[  -4,  2.3, 36.8],6.0,-32, -6,  8, -4.7, 65.2),
+    A(1.03, 7,[  7.0,33.0, 14.0],[  11.5, 2.6, 38],  6.4,-42, -20, 12, -4.8, 65.2),
+    A(1.042,8,[ 11.0,35.0, 13.0],[  34,  4.2, 37.6],6.9,-52, -42, 14, -4.0, 65.3),
+    A(1.07, 0,[ 15.0,40.0, 10.5],[  39, 20.0, 20],  7.05,-55,-52, 14.5,-3.4,65.35),
+    A(1.11, 0,[ 20.0,46.0,  8.0],[  40, 44.0, 10],  7.2,-58, -64, 15, -2.6, 65.4),
+    A(1.23, 9,[ 23.0,56.0,  4.0],[  30, 88.0, -6],  7.4,-64, -82, 16, -0.6, 65.6),
+    A(1.35, 0,[ 20.0,64.0, -1.0],[  10, 94.0,-16],  7.7,-68, -94, 16,  1.6, 65.8),
+    A(1.52,10,[ 15.0,68.0, -5.0],[ -12, 76.0,-20],  7.9,-72,-100, 16,  4.0, 66),
+  ],
+};
+
+/* =================================================================
+   Swing compilation: anchors -> dense samples of every channel.
+   ================================================================= */
+const DENSE = 280;
+function compileSwing(sw){
+  const a = sw.anchors;
+  const n = a.length;
+  const clubLen = sw.clubLen || null;
+  const has3d = a.every(p => p.h.length >= 3 && p.h[2] != null);
+  const hasClub = a.some(p => p.c);
+  const hasBody = a.some(p => p.sway != null);
+
+  // per-anchor fractional phase (linear between tagged anchors, by index)
+  const tags = [];
+  a.forEach((p,i)=>{ if (p.p) tags.push([i, p.p]); });
+  const phaseAt = new Array(n).fill(null);
+  if (tags.length >= 2){
+    for (let i=0;i<n;i++){
+      let lo = tags[0], hi = tags[tags.length-1];
+      for (const t of tags){ if (t[0] <= i) lo = t; }
+      for (let k=tags.length-1;k>=0;k--){ if (tags[k][0] >= i) hi = tags[k]; }
+      phaseAt[i] = lo[0] === hi[0] ? lo[1] : lo[1] + (hi[1]-lo[1])*(i-lo[0])/(hi[0]-lo[0]);
+    }
+  }
+
+  // clubhead positions are authored/digitized directly (no renormalization —
+  // 2D projections and perspective make a rigid-length constraint do more harm than good)
+  const club = a.map(p=>p.c || null);
+
+  const ch = (get) => { const v = a.map(get); return (u)=>crSample(v,u); };
+  const hx=ch(p=>p.h[0]), hy=ch(p=>p.h[1]), hz=has3d?ch(p=>p.h[2]):null;
+  let cxv=null,cyv=null,czv=null;
+  if (hasClub){
+    const cxa=club.map(c=>c?c[0]:null), cya=club.map(c=>c?c[1]:null), cza=club.map(c=>c&&c.length>2?c[2]:null);
+    const filled = arr => arr.every(v=>v!=null);
+    if (filled(cxa)){ cxv=(u)=>crSample(cxa,u); cyv=(u)=>crSample(cya,u); czv = has3d&&filled(cza) ? (u)=>crSample(cza,u) : null; }
+  }
+  // extra digitized 2D body traces (hip / shoulder / head), sampled per subset
+  const extras = {};
+  for (const k of ["hip","sh","head"]){
+    const sub = a.filter(p=>p[k]);
+    if (sub.length >= 4){
+      const xs=[], ys=[], M=90;
+      for (let i=0;i<M;i++){
+        const u=(sub.length-1)*i/(M-1);
+        xs.push(crSample(sub.map(p=>p[k][0]),u));
+        ys.push(crSample(sub.map(p=>p[k][1]),u));
+      }
+      extras[k]={xs,ys};
+    }
+  }
+  const bch = k => hasBody ? ch(p=>p[k] ?? 0) : null;
+  const sway=bch("sway"), hipT=bch("hipT"), shT=bch("shT"), shTilt=bch("shTilt"), hdX=bch("hdX"), hdY=bch("hdY");
+
+  const S = { t:[], hx:[], hy:[], hz:[], cx:[], cy:[], cz:[], sway:[], hipT:[], shT:[], shTilt:[], hdX:[], hdY:[], phase:[] };
+  for (let i=0;i<DENSE;i++){
+    const u = (n-1) * i/(DENSE-1);
+    const seg = Math.min(Math.floor(u), n-2), f = u-seg;
+    S.t.push(a[seg].t + (a[seg+1].t - a[seg].t)*f);                 // linear time (monotone)
+    S.hx.push(hx(u)); S.hy.push(hy(u)); S.hz.push(hz?hz(u):null);
+    S.cx.push(cxv?cxv(u):null); S.cy.push(cyv?cyv(u):null); S.cz.push(czv?czv(u):null);
+    S.sway.push(sway?sway(u):null); S.hipT.push(hipT?hipT(u):null); S.shT.push(shT?shT(u):null);
+    S.shTilt.push(shTilt?shTilt(u):null); S.hdX.push(hdX?hdX(u):null); S.hdY.push(hdY?hdY(u):null);
+    S.phase.push(phaseAt[0]!=null ? (phaseAt[seg] + (phaseAt[seg+1]-phaseAt[seg])*f) : null);
+  }
+
+  // split index: P4 anchor if tagged, else max hand-y in first 65%
+  let topIdx;
+  const p4 = S.phase[0]!=null ? S.phase.findIndex(p=>p>=4) : -1;
+  if (p4 > 0) topIdx = p4;
+  else { let best=0; for (let i=0;i<DENSE*0.65;i++) if (S.hy[i]>S.hy[best]) best=i; topIdx=best; }
+
+  // speeds (in/s) via central differences over time
+  const spd = (X,Y,Z) => S.t.map((_,i)=>{
+    if (X[i]==null) return null;
+    const i0=Math.max(0,i-1), i1=Math.min(DENSE-1,i+1);
+    const dt = S.t[i1]-S.t[i0]; if (dt<=0) return 0;
+    const dx=X[i1]-X[i0], dy=Y[i1]-Y[i0], dz=(Z&&Z[i1]!=null)?Z[i1]-Z[i0]:0;
+    return Math.hypot(dx,dy,dz)/dt;
+  });
+  S.handSpd = spd(S.hx,S.hy,S.hz&&S.hz[0]!=null?S.hz:null);
+  S.clubSpd = S.cx[0]!=null ? spd(S.cx,S.cy,S.cz&&S.cz[0]!=null?S.cz:null) : null;
+
+  // impact metrics (3D club data only): sample where phase crosses 7
+  let impact = null;
+  if (S.phase[0]!=null && S.cx[0]!=null && S.cz && S.cz[0]!=null){
+    const ii = S.phase.findIndex(p=>p>=7);
+    if (ii>0){
+      // sample channels at fixed time offsets around impact (robust to anchor spacing)
+      const at=(arr,t)=>{
+        let lo=0,hi=DENSE-1;
+        while(lo<hi){const m=(lo+hi)>>1; if(S.t[m]<t)lo=m+1; else hi=m;}
+        const i1=Math.max(1,lo), i0=i1-1, span=S.t[i1]-S.t[i0];
+        const f=span>0?Math.min(1,Math.max(0,(t-S.t[i0])/span)):0;
+        return arr[i0]+(arr[i1]-arr[i0])*f;
+      };
+      const t7=S.t[ii], w=0.005;
+      const vx=(at(S.cx,t7+w)-at(S.cx,t7-w))/(2*w);
+      const vy=(at(S.cy,t7+w)-at(S.cy,t7-w))/(2*w);
+      const vz=(at(S.cz,t7+w)-at(S.cz,t7-w))/(2*w);
+      impact = {
+        idx: ii,
+        path: Math.atan2(vz,vx)*180/Math.PI,          // + = in-to-out (right of target, RH)
+        aoa: Math.atan2(vy,Math.hypot(vx,vz))*180/Math.PI,
+        clubMph: Math.hypot(vx,vy,vz)*IN_S_TO_MPH,
+      };
+    }
+  }
+  return { sw, S, topIdx, impact, has3d, hasClub: S.cx[0]!=null, hasBody, extras };
+}
+
+/* =================================================================
+   Library (models + saved players)
+   ================================================================= */
+const LS_KEY = "handpathlab.players.v1";
+function loadSaved(){
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e){ return []; }
+}
+function persistSaved(list){ localStorage.setItem(LS_KEY, JSON.stringify(list)); }
+let savedPlayers = loadSaved();
+const models = [MODEL_IRON, MODEL_DRIVER];
+function allSwings(){ return models.concat(savedPlayers); }
+function swingById(id){ return allSwings().find(s=>s.id===id); }
+
+/* =================================================================
+   STUDY MODE — rendering
+   ================================================================= */
+const study = {
+  primary: "model-7i",
+  overlays: new Set(),
+  view: "face",
+  pos: 0,               // 0..1 normalized time of primary swing
+  playing: false,
+  compiled: new Map(),
+};
+function compiled(id){
+  if (!study.compiled.has(id)){
+    const sw = swingById(id);
+    if (!sw) return null;
+    study.compiled.set(id, compileSwing(sw));
+  }
+  return study.compiled.get(id);
+}
+const OV_COLORS = ["var(--c-ov1)","var(--c-ov2)","var(--c-ov3)"];
+
+/* world->screen transforms */
+const FACE = { w:760, h:520, cx:400, groundY:470, s:4.6 };  // x in [-70,+72]ish
+const DTL  = { w:620, h:520, cx:250, groundY:470, s:4.6 };  // horizontal = z
+const fx = x => FACE.cx + x*FACE.s, fy = y => FACE.groundY - y*FACE.s;
+const dx = z => DTL.cx + z*DTL.s,  dy = y => DTL.groundY - y*DTL.s;
+
+function pathD(xs, ys, toX, toY, i0, i1){
+  let d = "";
+  for (let i=i0;i<=i1;i++){
+    if (xs[i]==null) continue;
+    d += (d?"L":"M") + toX(xs[i]).toFixed(1) + " " + toY(ys[i]).toFixed(1);
+  }
+  return d;
+}
+
+function drawGrid(svg, view){
+  const g = el("g",{class:"grid"},svg);
+  const [W,H,toX,toY] = view==="face" ? [FACE.w,FACE.h,fx,fy] : [DTL.w,DTL.h,dx,dy];
+  if ($("tglGrid").checked){
+    const xmin = view==="face" ? -84 : -48, xmax = view==="face" ? 84 : 72;
+    for (let gx=Math.ceil(xmin/12)*12; gx<=xmax; gx+=12){
+      el("line",{x1:toX(gx),y1:toY(100),x2:toX(gx),y2:toY(0),stroke:gx===0?"var(--grid-major)":"var(--grid)","stroke-width":1},g);
+    }
+    for (let gy=0; gy<=96; gy+=12){
+      el("line",{x1:14,y1:toY(gy),x2:W-14,y2:toY(gy),stroke:gy===0?"var(--ground)":"var(--grid)","stroke-width":gy===0?1.6:1},g);
+      if (gy>0){
+        const t = el("text",{x:W-18,y:toY(gy)-3,"text-anchor":"end","font-size":9,fill:"var(--muted)"},g);
+        t.textContent = gy+"″";
+      }
+    }
+  } else {
+    el("line",{x1:14,y1:toY(0),x2:W-14,y2:toY(0),stroke:"var(--ground)","stroke-width":1.6},g);
+  }
+  if (view==="face"){
+    const t1=el("text",{x:W-16,y:toY(0)+16,"text-anchor":"end","font-size":10,fill:"var(--muted)"},g);
+    t1.textContent="target →";
+  } else {
+    const t2=el("text",{x:16,y:toY(0)+16,"font-size":10,fill:"var(--muted)"},g);
+    t2.textContent="← behind golfer · toward ball →   (target line runs into the screen)";
+  }
+}
+
+/* speed -> sequential single-hue ramp (amber family), light->dark by speed */
+function speedColor(v, vmax){
+  const f = Math.max(0, Math.min(1, v/vmax));
+  // interpolate lightness within the downswing hue
+  const l = 72 - 38*f;    // %
+  return `hsl(33 88% ${l}%)`;
+}
+
+function renderSwingInto(svg, view, comp, opts){
+  const { S, topIdx } = comp;
+  const is3d = comp.has3d;
+  const toX = view==="face" ? fx : dx;
+  const toY = view==="face" ? fy : dy;
+  const X = view==="face" ? S.hx : S.hz;
+  const capView = comp.sw.view;  // 'face' | 'dtl' | '3d'
+  if (view==="dtl" && !is3d && capView!=="dtl") return;
+  if (view==="face" && !is3d && capView!=="face") return;
+  const HX = (view==="dtl" && !is3d) ? S.hx /* 2D dtl stored in hx as horizontal */ : X;
+
+  const g = el("g",{class:"swing"},svg);
+  if (opts.overlayColor){
+    el("path",{d:pathD(HX,S.hy,toX,toY,0,topIdx),fill:"none",stroke:opts.overlayColor,"stroke-width":2,"stroke-dasharray":"5 5",opacity:.85},g);
+    el("path",{d:pathD(HX,S.hy,toX,toY,topIdx,DENSE-1),fill:"none",stroke:opts.overlayColor,"stroke-width":2,opacity:.9},g);
+    return;
+  }
+  // clubhead trace (primary only)
+  const CXv = view==="face" ? S.cx : S.cz;
+  if (opts.club && comp.hasClub && (is3d || capView===view)){
+    const CH = (view==="dtl" && !is3d) ? S.cx : CXv;
+    if (CH && CH[0]!=null)
+      el("path",{d:pathD(CH,S.cy,toX,toY,0,DENSE-1),fill:"none",stroke:"var(--c-club)","stroke-width":1.4,opacity:.55},g);
+  }
+  if (opts.velocity){
+    const vmax = Math.max(...S.handSpd);
+    for (let i=1;i<DENSE;i++){
+      if (HX[i]==null||HX[i-1]==null) continue;
+      el("line",{x1:toX(HX[i-1]),y1:toY(S.hy[i-1]),x2:toX(HX[i]),y2:toY(S.hy[i]),
+        stroke:speedColor(S.handSpd[i],vmax),"stroke-width":2.6,"stroke-linecap":"round"},g);
+    }
+  } else {
+    el("path",{d:pathD(HX,S.hy,toX,toY,0,topIdx),fill:"none",stroke:"var(--c-back)","stroke-width":2.4,"stroke-linecap":"round"},g);
+    el("path",{d:pathD(HX,S.hy,toX,toY,topIdx,DENSE-1),fill:"none",stroke:"var(--c-down)","stroke-width":2.4,"stroke-linecap":"round"},g);
+  }
+  // digitized body-point traces (2D captures) — hip / shoulder / head
+  if (!is3d && capView===view){
+    const EX_COLORS={hip:"var(--c-ov1)",sh:"var(--c-back)",head:"var(--c-ov2)"};
+    const EX_LABEL={hip:"lead hip",sh:"lead shoulder",head:"head"};
+    for (const k in comp.extras){
+      const {xs,ys}=comp.extras[k];
+      let d="";
+      for (let i=0;i<xs.length;i++) d+=(d?"L":"M")+toX(xs[i]).toFixed(1)+" "+toY(ys[i]).toFixed(1);
+      el("path",{d,fill:"none",stroke:EX_COLORS[k],"stroke-width":1.4,opacity:.6,"stroke-dasharray":"2 3"},g);
+      const t=el("text",{x:toX(xs[xs.length-1])+5,y:toY(ys[ys.length-1]),"font-size":9,fill:EX_COLORS[k]},g);
+      t.textContent=EX_LABEL[k];
+    }
+  }
+  // P markers on the path
+  if (S.phase[0]!=null){
+    for (let p=1;p<=10;p++){
+      const i = S.phase.findIndex(v=>v>=p);
+      if (i<0 || HX[i]==null) continue;
+      el("circle",{cx:toX(HX[i]),cy:toY(S.hy[i]),r:2.6,fill:"var(--stage)",stroke:"var(--muted)","stroke-width":1.2},g);
+      const t = el("text",{x:toX(HX[i])+5,y:toY(S.hy[i])-5,"font-size":9,fill:"var(--muted)"},g);
+      t.textContent="P"+p;
+    }
+  }
+}
+
+function drawBallAndPlane(svg, view, comp){
+  const sw = comp.sw;
+  if (sw.ballX==null) return;
+  const toX = view==="face"?fx:dx, toY = view==="face"?fy:dy;
+  const bx = view==="face" ? sw.ballX : sw.ballZ;
+  if (bx==null) return;
+  el("circle",{cx:toX(bx),cy:toY(0.85),r:4,fill:"var(--ball-fill)",stroke:"var(--ball-line)","stroke-width":1.4},svg);
+  if (view==="dtl" && $("tglPlane").checked && comp.has3d){
+    // original shaft plane: ball through hands at address
+    const hz0 = comp.S.hz[0], hy0 = comp.S.hy[0];
+    const dz_ = sw.ballZ - hz0, dy_ = 0.85 - hy0;
+    const zTop = hz0 - dz_*1.5, yTop = hy0 - dy_*1.5;
+    el("line",{x1:toX(sw.ballZ),y1:toY(0.85),x2:toX(zTop),y2:toY(yTop),stroke:"var(--muted)","stroke-width":1,"stroke-dasharray":"3 5",opacity:.8},svg);
+    const t=el("text",{x:toX(zTop)+4,y:toY(yTop),"font-size":9,fill:"var(--muted)"},svg);
+    t.textContent="shaft plane";
+  }
+}
+
+/* --- articulated golfer, face-on --- */
+function drawGolferFace(g, comp, i){
+  const { S, sw } = comp;
+  if (!comp.hasBody){ // simple hands dot only
+    return;
+  }
+  const stance = sw.stance || 11;
+  const sway=S.sway[i], hipT=S.hipT[i]*Math.PI/180, shT=S.shT[i]*Math.PI/180, tilt=S.shTilt[i]*Math.PI/180;
+  const hdXv=S.hdX[i], hdYv=S.hdY[i];
+  const hipY=39, shY=56.5;
+  const hipCx = sway, shCx = hdXv*0.72 + sway*0.28;
+  const hipW = 6.5*Math.max(.25,Math.cos(hipT));
+  const shW  = 8.2*Math.max(.22,Math.cos(shT));
+  const P = (x,y)=>[fx(x),fy(y)];
+  const L = (a,b,w=2)=>el("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:"var(--golfer)","stroke-width":w,"stroke-linecap":"round",opacity:.75},g);
+  // legs
+  const footL=[ stance,0], footT=[-stance,0];
+  const kneeL=[ stance*0.8+sway*0.35,18.5], kneeT=[-stance*0.8+sway*0.35,18.5];
+  L(P(...footL),P(...kneeL)); L(P(...kneeL),P(hipCx+hipW*0.8,hipY));
+  L(P(...footT),P(...kneeT)); L(P(...kneeT),P(hipCx-hipW*0.8,hipY));
+  el("line",{x1:fx(footL[0]-2.4),y1:fy(0),x2:fx(footL[0]+2.4),y2:fy(0),stroke:"var(--golfer)","stroke-width":3,opacity:.75},g);
+  el("line",{x1:fx(footT[0]-2.4),y1:fy(0),x2:fx(footT[0]+2.4),y2:fy(0),stroke:"var(--golfer)","stroke-width":3,opacity:.75},g);
+  // pelvis + shoulders
+  L(P(hipCx-hipW,hipY),P(hipCx+hipW,hipY),3);
+  const shL=[shCx+shW*Math.cos(tilt), shY+shW*Math.sin(tilt)];
+  const shTr=[shCx-shW*Math.cos(tilt), shY-shW*Math.sin(tilt)];
+  L(P(...shL),P(...shTr),3);
+  // spine + head
+  L(P(hipCx,hipY),P(shCx,shY),2.4);
+  const headC=[hdXv, hdYv];
+  L(P(shCx,shY),P(headC[0],headC[1]-3.4),2);
+  el("circle",{cx:fx(headC[0]),cy:fy(headC[1]),r:3.5*FACE.s*0.92,fill:"none",stroke:"var(--golfer)","stroke-width":2,opacity:.75},g);
+  // arms
+  const hx_=S.hx[i], hy_=S.hy[i];
+  L(P(...shL),P(hx_,hy_),1.8); L(P(...shTr),P(hx_,hy_),1.8);
+  // club
+  if (comp.hasClub && S.cx[i]!=null)
+    el("line",{x1:fx(hx_),y1:fy(hy_),x2:fx(S.cx[i]),y2:fy(S.cy[i]),stroke:"var(--golfer)","stroke-width":1.6,opacity:.85},g);
+}
+
+/* --- golfer, DTL (posture from behind) --- */
+function drawGolferDtl(g, comp, i){
+  const { S, sw } = comp;
+  if (!comp.hasBody || !comp.has3d) return;
+  const P=(z,y)=>[dx(z),dy(y)];
+  const L=(a,b,w=2)=>el("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:"var(--golfer)","stroke-width":w,"stroke-linecap":"round",opacity:.75},g);
+  // static posture: ankle, knee, hip (pushed back), shoulder (leaned toward ball), head
+  const ankle=[0,0], knee=[3,18.5], hip=[-4.5,39], sh=[3.5,56.5];
+  const head=[6.5, S.hdY[i]];
+  L(P(...ankle),P(...knee)); L(P(...knee),P(...hip),2.4); L(P(...hip),P(...sh),2.6);
+  L(P(...sh),P(head[0],head[1]-3.4),2);
+  el("circle",{cx:dx(head[0]),cy:dy(head[1]),r:3.3*DTL.s,fill:"none",stroke:"var(--golfer)","stroke-width":2,opacity:.75},g);
+  // arm to hands, club to clubhead
+  const hz_=S.hz[i], hy_=S.hy[i];
+  L(P(...sh),P(hz_,hy_),1.8);
+  if (comp.hasClub && S.cz[i]!=null)
+    el("line",{x1:dx(hz_),y1:dy(hy_),x2:dx(S.cz[i]),y2:dy(S.cy[i]),stroke:"var(--golfer)","stroke-width":1.6,opacity:.85},g);
+}
+
+/* dynamic layers (updated on scrub without rebuilding paths) */
+const dyn = { face:null, dtl:null, faceBack:null, dtlBack:null };
+
+function rebuildStages(){
+  const pv = compiled(study.primary);
+  for (const [view, svgId] of [["face","faceSvg"],["dtl","dtlSvg"]]){
+    const svg = $(svgId);
+    svg.textContent = "";
+    drawGrid(svg, view);
+    if (pv) drawBallAndPlane(svg, view, pv);
+    dyn[view+"Back"] = el("g",{class:"dynback"},svg);   // golfer skeleton, under paths
+    // overlays first (under primary)
+    let oi = 0;
+    for (const id of study.overlays){
+      const c = compiled(id);
+      if (c) renderSwingInto(svg, view, c, {overlayColor:OV_COLORS[oi%3]});
+      oi++;
+    }
+    if (pv) renderSwingInto(svg, view, pv, {
+      club: $("tglClub").checked,
+      velocity: $("tglVelocity").checked,
+    });
+    dyn[view] = el("g",{class:"dyn"},svg);
+  }
+  updateDynamic();
+  buildPTrack();
+  buildAnchorTable();
+  updateImpactStats();
+}
+
+function sampleIndex(comp, pos){
+  const t = comp.S.t[0] + pos*(comp.S.t[DENSE-1]-comp.S.t[0]);
+  // binary search
+  let lo=0, hi=DENSE-1;
+  while (lo<hi){ const m=(lo+hi)>>1; if (comp.S.t[m] < t) lo=m+1; else hi=m; }
+  return lo;
+}
+
+function updateDynamic(){
+  const comp = compiled(study.primary);
+  if (!comp) return;
+  const i = sampleIndex(comp, study.pos);
+  const { S } = comp;
+  for (const view of ["face","dtl"]){
+    const g = dyn[view]; if (!g) continue;
+    g.textContent = "";
+    const gb = dyn[view+"Back"]; if (gb) gb.textContent = "";
+    const toX=view==="face"?fx:dx, toY=view==="face"?fy:dy;
+    if ($("tglGolfer").checked && gb){
+      if (view==="face") drawGolferFace(gb, comp, i);
+      else drawGolferDtl(gb, comp, i);
+    }
+    // hands dot + clubhead dot
+    let hx_ = view==="face" ? S.hx[i] : (comp.has3d ? S.hz[i] : (comp.sw.view==="dtl" ? S.hx[i] : null));
+    if (hx_!=null){
+      el("circle",{cx:toX(hx_),cy:toY(S.hy[i]),r:5.2,fill:"var(--c-down)",stroke:"var(--stage)","stroke-width":2},g);
+    }
+    if (comp.hasClub){
+      let cx_ = view==="face" ? S.cx[i] : (comp.has3d ? S.cz[i] : (comp.sw.view==="dtl" ? S.cx[i] : null));
+      if (cx_!=null)
+        el("circle",{cx:toX(cx_),cy:toY(S.cy[i]),r:4,fill:"var(--c-club)",stroke:"var(--stage)","stroke-width":1.6},g);
+    }
+  }
+  // readouts
+  $("mHands").textContent = `${fmt(S.hx[i])} / ${fmt(S.hy[i])}`;
+  $("mDepth").textContent = S.hz&&S.hz[i]!=null ? fmt(S.hz[i]) : "—";
+  $("mHandSpd").textContent = S.handSpd[i]!=null ? fmt(S.handSpd[i]*IN_S_TO_MPH,1)+" mph" : "—";
+  $("mClubSpd").textContent = S.clubSpd ? fmt(S.clubSpd[i]*IN_S_TO_MPH,1)+" mph" : "—";
+  $("tReadout").textContent = fmt(S.t[i],2)+" s";
+  const ph = S.phase ? S.phase[i] : null;
+  if (ph!=null){
+    const pi = Math.max(1,Math.min(10,Math.floor(ph+1e-6)));
+    $("phaseChip").textContent = `P${pi} · ${PHASES[pi-1][1]}`;
+    $("phaseDesc").textContent = PHASES[pi-1][2];
+  } else {
+    $("phaseChip").textContent = "—";
+    $("phaseDesc").textContent = "No P tags on this capture — add them in Digitize mode.";
+  }
+  $("scrub").value = Math.round(study.pos*1000);
+}
+
+function updateImpactStats(){
+  const comp = compiled(study.primary);
+  const box = $("impactStats");
+  if (comp && comp.impact){
+    const im = comp.impact;
+    const dir = im.path > 0.4 ? "in-to-out" : im.path < -0.4 ? "out-to-in" : "neutral";
+    box.innerHTML = `At impact — club path <b class="mono">${im.path>=0?"+":""}${im.path.toFixed(1)}°</b> (${dir}) · attack angle <b class="mono">${im.aoa>=0?"+":""}${im.aoa.toFixed(1)}°</b> · clubhead <b class="mono">${im.clubMph.toFixed(0)} mph</b>`;
+  } else {
+    box.textContent = "Impact metrics need 3D club data (models) — digitized 2D captures show path shape only.";
+  }
+}
+
+function buildPTrack(){
+  const comp = compiled(study.primary);
+  const tr = $("ptrack"); tr.textContent = "";
+  if (!comp || comp.S.phase[0]==null) return;
+  const { S } = comp;
+  const t0=S.t[0], t1=S.t[DENSE-1];
+  for (let p=1;p<=10;p++){
+    const i = S.phase.findIndex(v=>v>=p);
+    if (i<0) continue;
+    const frac = (S.t[i]-t0)/(t1-t0);
+    const tick = document.createElement("span"); tick.className="tick"; tick.style.left=(frac*100)+"%"; tr.appendChild(tick);
+    const lb = document.createElement("span"); lb.className="ticklabel mono"; lb.style.left=(frac*100)+"%";
+    lb.textContent="P"+p; lb.title=PHASES[p-1][1];
+    lb.addEventListener("click",()=>{ study.pos=frac; stopPlay(); updateDynamic(); });
+    tr.appendChild(lb);
+  }
+}
+
+function buildAnchorTable(){
+  const sw = swingById(study.primary);
+  const tb = $("anchorTable"); tb.textContent = "";
+  if (!sw) return;
+  const tr0 = document.createElement("tr");
+  tr0.innerHTML = "<th>t (s)</th><th>P</th><th>hand x</th><th>hand y</th><th>hand z</th>";
+  tb.appendChild(tr0);
+  for (const a of sw.anchors){
+    const tr = document.createElement("tr");
+    tr.className="mono";
+    tr.innerHTML = `<td>${a.t.toFixed(2)}</td><td>${a.p||""}</td><td>${fmt(a.h[0])}</td><td>${fmt(a.h[1])}</td><td>${a.h[2]!=null?fmt(a.h[2]):"—"}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+/* ---------- selectors / library UI ---------- */
+function refreshSelectors(){
+  const sel = $("primarySel"); sel.textContent="";
+  for (const s of allSwings()){
+    const o=document.createElement("option"); o.value=s.id;
+    o.textContent = s.name + (s.model ? "  (model)" : "");
+    sel.appendChild(o);
+  }
+  sel.value = study.primary;
+  const sw = swingById(study.primary);
+  $("primaryMeta").innerHTML = sw ? (sw.model
+    ? `<span class="badge model">model</span> ${sw.club} · authored to hub-path research, not measured data`
+    : `<span class="badge real">digitized</span> ${sw.club||""} · ${sw.view==="dtl"?"down-the-line":"face-on"} capture${sw.source?` · ${sw.source}`:""}`) : "";
+
+  const ov = $("overlayList"); ov.textContent="";
+  let oi=0;
+  for (const s of allSwings()){
+    if (s.id===study.primary) continue;
+    const lb=document.createElement("label"); lb.className="playeritem";
+    const cb=document.createElement("input"); cb.type="checkbox";
+    cb.checked = study.overlays.has(s.id);
+    cb.addEventListener("change",()=>{
+      if (cb.checked){
+        if (study.overlays.size>=3){ cb.checked=false; toast("Max 3 overlays"); return; }
+        study.overlays.add(s.id);
+      } else study.overlays.delete(s.id);
+      refreshSelectors(); rebuildStages();
+    });
+    const sw2=document.createElement("span");
+    if (study.overlays.has(s.id)){ sw2.className="swatch"; sw2.style.background=OV_COLORS[[...study.overlays].indexOf(s.id)%3]; }
+    else { sw2.className="swatch"; sw2.style.background="var(--line)"; }
+    const nm=document.createElement("span"); nm.className="nm"; nm.textContent=s.name;
+    lb.append(cb,sw2,nm); ov.appendChild(lb);
+    oi++;
+  }
+
+  const pl=$("playersList"); pl.textContent="";
+  if (!savedPlayers.length){ pl.innerHTML='<p class="hint" style="margin:0">No digitized swings yet — capture one in Digitize mode or import pipeline JSON.</p>'; }
+  for (const s of savedPlayers){
+    const row=document.createElement("div"); row.className="playeritem";
+    const nm=document.createElement("span"); nm.className="nm"; nm.textContent=s.name;
+    const del=document.createElement("button"); del.className="x"; del.textContent="✕"; del.title="Delete "+s.name;
+    del.addEventListener("click",()=>{
+      if (!del.dataset.armed){          // two-step delete (confirm() is blocked in sandboxed embeds)
+        del.dataset.armed="1"; del.textContent="sure?";
+        setTimeout(()=>{ del.dataset.armed=""; del.textContent="✕"; }, 2500);
+        return;
+      }
+      savedPlayers = savedPlayers.filter(p=>p.id!==s.id);
+      persistSaved(savedPlayers);
+      study.compiled.delete(s.id);
+      study.overlays.delete(s.id);
+      if (study.primary===s.id) study.primary = "model-7i";
+      refreshSelectors(); rebuildStages();
+    });
+    row.append(nm,del); pl.appendChild(row);
+  }
+}
+
+/* ---------- playback ---------- */
+let rafId=null, lastTs=null;
+function stopPlay(){ study.playing=false; $("btnPlay").textContent="Play"; if (rafId) cancelAnimationFrame(rafId); rafId=null; lastTs=null; }
+function startPlay(){
+  study.playing=true; $("btnPlay").textContent="Pause";
+  const comp=compiled(study.primary); if (!comp) return stopPlay();
+  const dur = comp.S.t[DENSE-1]-comp.S.t[0];
+  const step = (ts)=>{
+    if (!study.playing) return;
+    if (lastTs!=null){
+      const sp = parseFloat($("playSpeed").value);
+      study.pos += (ts-lastTs)/1000 * sp / dur;
+      if (study.pos>1) study.pos=0;
+      updateDynamic();
+    }
+    lastTs=ts; rafId=requestAnimationFrame(step);
+  };
+  rafId=requestAnimationFrame(step);
+}
+$("btnPlay").addEventListener("click",()=> study.playing?stopPlay():startPlay());
+$("scrub").addEventListener("input",e=>{ stopPlay(); study.pos=e.target.value/1000; updateDynamic(); });
+
+$("primarySel").addEventListener("change",e=>{
+  study.primary=e.target.value; study.overlays.delete(study.primary);
+  study.pos=0; stopPlay(); refreshSelectors(); rebuildStages();
+});
+for (const id of ["tglClub","tglGolfer","tglVelocity","tglPlane","tglGrid"])
+  $(id).addEventListener("change",rebuildStages);
+
+document.querySelectorAll(".viewtabs button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".viewtabs button").forEach(x=>x.setAttribute("aria-pressed", String(x===b)));
+    study.view=b.dataset.view;
+    $("faceBox").hidden = study.view==="dtl";
+    $("dtlBox").hidden = study.view==="face";
+    $("stages").classList.toggle("both", study.view==="both");
+    rebuildStages();
+  });
+});
+
+/* keyboard */
+document.addEventListener("keydown",(e)=>{
+  if (e.target.matches("input,select,textarea")) return;
+  if (!$("studyMain").hidden){
+    if (e.key===" "){ e.preventDefault(); study.playing?stopPlay():startPlay(); }
+    if (e.key==="ArrowRight"||e.key==="ArrowLeft"){
+      e.preventDefault(); stopPlay();
+      const d=(e.key==="ArrowRight"?1:-1)*(e.shiftKey?0.02:0.004);
+      study.pos=Math.max(0,Math.min(1,study.pos+d)); updateDynamic();
+    }
+  } else {
+    if (e.key==="ArrowRight"||e.key==="ArrowLeft"){ e.preventDefault(); digStep((e.key==="ArrowRight"?1:-1)*(e.shiftKey?5:1)); }
+    if (/^[1-5]$/.test(e.key)) selectKp(parseInt(e.key,10)-1);
+  }
+});
+
+/* ---------- export / import ---------- */
+$("btnExport").addEventListener("click",()=>{
+  const payload = { app:"handpath-lab", version:1, exported:new Date().toISOString(), players:savedPlayers };
+  const blob = new Blob([JSON.stringify(payload,null,1)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download="handpath-lab-library.json"; a.click(); URL.revokeObjectURL(a.href);
+  toast("Library exported");
+});
+$("btnImport").addEventListener("click",()=>$("importFile").click());
+$("importFile").addEventListener("change",async e=>{
+  const f=e.target.files[0]; if (!f) return;
+  try{
+    const j=JSON.parse(await f.text());
+    let added=0;
+    const take=(p)=>{
+      if (!p || !Array.isArray(p.anchors) || !p.anchors.length) return;
+      p.id = p.id && !swingById(p.id) ? p.id : "u"+Date.now().toString(36)+Math.floor(performance.now()%1e4).toString(36)+added;
+      delete p.model;
+      savedPlayers.push(p); added++;
+    };
+    if (j.app==="handpath-lab" && Array.isArray(j.players)) j.players.forEach(take);
+    else if (j.source==="track_swing" || (j.anchors && j.view)) take(normalizePipeline(j));
+    else if (Array.isArray(j)) j.forEach(take);
+    else throw new Error("Unrecognized format");
+    persistSaved(savedPlayers);
+    refreshSelectors(); rebuildStages();
+    toast(added? `Imported ${added} swing${added>1?"s":""}` : "Nothing importable found");
+  }catch(err){ toast("Import failed: "+err.message); }
+  e.target.value="";
+});
+/* pipeline JSON -> player */
+function normalizePipeline(j){
+  return {
+    id:null,
+    name: j.name || (j.video ? j.video.replace(/\.[^.]+$/,"") : "Pipeline capture"),
+    club: j.club || "Other",
+    view: j.view==="dtl" ? "dtl" : "face",
+    source: "track_swing.py (MediaPipe)",
+    height: j.heightIn,
+    anchors: j.anchors.map(a=>({ t:a.t, p:a.p||0, h:[a.h[0],a.h[1],a.h.length>2?a.h[2]:null], c:a.c||null,
+      hip:a.hip||null, sh:a.sh||null, head:a.head||null })),
+  };
+}
+
+/* =================================================================
+   DIGITIZE MODE
+   ================================================================= */
+const KPS = [
+  {k:"h", label:"Hands", color:"var(--c-down)"},
+  {k:"c", label:"Clubhead", color:"var(--c-club)"},
+  {k:"hip", label:"Lead hip", color:"var(--c-ov1)"},
+  {k:"sh", label:"Lead shoulder", color:"var(--c-back)"},
+  {k:"head", label:"Head", color:"var(--c-ov2)"},
+];
+const dig = {
+  media:null, kind:null, fps:30,
+  cal:null, calStep:-1,
+  kp:0,
+  frames:new Map(),   // tMs -> {pts:{h:[px,py],...}, p:phase}
+  clicks:[],          // undo stack: [tMs, key]
+};
+
+for (let p=1;p<=10;p++){
+  const o=document.createElement("option"); o.value=p; o.textContent=`P${p} · ${PHASES[p-1][1]}`;
+  $("digPhase").appendChild(o);
+}
+const kpWrap=$("kpBtns");
+KPS.forEach((kp,i)=>{
+  const b=document.createElement("button");
+  b.textContent=`${i+1} ${kp.label}`;
+  b.dataset.i=i;
+  b.setAttribute("aria-pressed", String(i===0));
+  if (i===0) b.style.background=kp.color;
+  b.addEventListener("click",()=>selectKp(i));
+  kpWrap.appendChild(b);
+});
+function selectKp(i){
+  dig.kp=i;
+  kpWrap.querySelectorAll("button").forEach((b,j)=>{
+    b.setAttribute("aria-pressed",String(j===i));
+    b.style.background = j===i ? KPS[j].color : "";
+  });
+}
+
+$("btnLoadVideo").addEventListener("click",()=>$("videoFile").click());
+$("btnLoadImage").addEventListener("click",()=>$("imageFile").click());
+$("videoFile").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const v=$("digVideo");
+  v.src=URL.createObjectURL(f); v.hidden=false; $("digImage").hidden=true; $("digEmpty").hidden=true;
+  dig.media=v; dig.kind="video";
+  v.addEventListener("loadedmetadata",()=>{ setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000); },{once:true});
+  resetCapture();
+});
+$("imageFile").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const img=$("digImage");
+  img.src=URL.createObjectURL(f); img.hidden=false; $("digVideo").hidden=true; $("digEmpty").hidden=true;
+  dig.media=img; dig.kind="image";
+  img.addEventListener("load",()=>setupOverlay(img.naturalWidth,img.naturalHeight),{once:true});
+  toast("Image loaded — swap screenshots between clicks; same framing keeps calibration.");
+});
+function resetCapture(){
+  dig.frames.clear(); dig.clicks=[]; dig.cal=null; dig.calStep=-1;
+  $("calReadout").textContent="not calibrated";
+  renderCalSteps(); renderFrames(); redrawOverlay();
+}
+function setupOverlay(w,h){
+  const ov=$("digOverlay");
+  ov.removeAttribute("hidden");   // SVG elements have no .hidden IDL property
+  ov.setAttribute("viewBox",`0 0 ${w} ${h}`);
+  ov.dataset.w=w; ov.dataset.h=h;
+  redrawOverlay();
+}
+
+/* frame nav */
+function digStep(n){
+  if (dig.kind!=="video") return;
+  const v=$("digVideo");
+  dig.fps=parseFloat($("digFps").value)||30;
+  v.currentTime=Math.max(0,Math.min(v.duration||0,v.currentTime+n/dig.fps));
+}
+$("fPrev").addEventListener("click",()=>digStep(-1));
+$("fNext").addEventListener("click",()=>digStep(1));
+$("fPrev5").addEventListener("click",()=>digStep(-5));
+$("fNext5").addEventListener("click",()=>digStep(5));
+$("digScrub").addEventListener("input",e=>{ if (dig.kind==="video") $("digVideo").currentTime=e.target.value/1000; });
+$("digVideo").addEventListener("timeupdate",()=>{
+  $("digTime").textContent=($("digVideo").currentTime).toFixed(3)+" s";
+  $("digScrub").value=Math.round($("digVideo").currentTime*1000);
+  redrawOverlay();
+});
+
+/* calibration */
+function renderCalSteps(){
+  document.querySelectorAll("#calSteps li").forEach((li,i)=>{
+    li.className = dig.calStep>i||dig.cal ? "done" : (dig.calStep===i ? "now" : "");
+  });
+}
+$("btnCalibrate").addEventListener("click",()=>{
+  if (!dig.media){ toast("Load a video or image first"); return; }
+  dig.cal=null; dig.calStep=0; dig._calPts=[];
+  renderCalSteps(); redrawOverlay();
+  toast("Click the top of the golfer's head");
+});
+
+/* clicks on the overlay */
+$("digOverlay").addEventListener("pointerdown",(e)=>{
+  const ov=$("digOverlay");
+  const r=ov.getBoundingClientRect();
+  const px=(e.clientX-r.left)/r.width * parseFloat(ov.dataset.w);
+  const py=(e.clientY-r.top)/r.height * parseFloat(ov.dataset.h);
+  if (dig.calStep>=0 && dig.calStep<3){
+    dig._calPts.push([px,py]);
+    dig.calStep++;
+    if (dig.calStep===3){
+      const H=parseFloat($("digHeight").value)||71;
+      const [crown,ground,center]=dig._calPts;
+      const pxPerIn=(ground[1]-crown[1])/H;
+      if (pxPerIn<=0){ toast("Ground must be below head — try again"); dig.calStep=-1; renderCalSteps(); return; }
+      dig.cal={pxPerIn, groundY:ground[1], centerX:center[0]};
+      dig.calStep=-1;
+      $("calReadout").textContent=`${pxPerIn.toFixed(2)} px/in`;
+      toast("Calibrated ✓ — now track points frame by frame");
+    } else {
+      toast(dig.calStep===1?"Click the ground at the feet":"Click the body center (sternum)");
+    }
+    renderCalSteps(); redrawOverlay(); return;
+  }
+  if (!dig.cal){ toast("Calibrate first (panel 2)"); return; }
+  const tMs = dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : dig.frames.size*33;
+  if (!dig.frames.has(tMs)) dig.frames.set(tMs,{pts:{},p:0});
+  dig.frames.get(tMs).pts[KPS[dig.kp].k]=[px,py];
+  dig.clicks.push([tMs,KPS[dig.kp].k]);
+  const ph=$("digPhase").value;
+  if (ph) { dig.frames.get(tMs).p=parseInt(ph,10); $("digPhase").value=""; }
+  renderFrames(); redrawOverlay();
+});
+$("digPhase").addEventListener("change",()=>{
+  if (dig.kind!=="video") return;
+  const tMs=Math.round($("digVideo").currentTime*1000);
+  if (dig.frames.has(tMs) && $("digPhase").value){
+    dig.frames.get(tMs).p=parseInt($("digPhase").value,10);
+    $("digPhase").value=""; renderFrames();
+  }
+});
+$("btnUndo").addEventListener("click",()=>{
+  const last=dig.clicks.pop(); if(!last) return;
+  const [tMs,k]=last;
+  const fr=dig.frames.get(tMs);
+  if (fr){ delete fr.pts[k]; if (!Object.keys(fr.pts).length) dig.frames.delete(tMs); }
+  renderFrames(); redrawOverlay();
+});
+
+function redrawOverlay(){
+  const ov=$("digOverlay"); if (ov.hasAttribute("hidden")) return;
+  ov.textContent="";
+  const W=parseFloat(ov.dataset.w)||100;
+  const r=Math.max(3,W/220);
+  if (dig.cal){
+    el("line",{x1:0,y1:dig.cal.groundY,x2:W,y2:dig.cal.groundY,stroke:"var(--c-ov1)","stroke-width":r/2,"stroke-dasharray":"6 6",opacity:.8},ov);
+    el("line",{x1:dig.cal.centerX,y1:0,x2:dig.cal.centerX,y2:parseFloat(ov.dataset.h),stroke:"var(--c-ov1)","stroke-width":r/2,"stroke-dasharray":"6 6",opacity:.6},ov);
+  }
+  if (dig._calPts && dig.calStep>=0)
+    for (const p of dig._calPts) el("circle",{cx:p[0],cy:p[1],r:r,fill:"var(--c-ov1)"},ov);
+  // full hands trace so far
+  const times=[...dig.frames.keys()].sort((a,b)=>a-b);
+  let d="";
+  for (const t of times){
+    const h=dig.frames.get(t).pts.h;
+    if (h) d+=(d?"L":"M")+h[0].toFixed(1)+" "+h[1].toFixed(1);
+  }
+  if (d) el("path",{d,fill:"none",stroke:"var(--c-down)","stroke-width":r/1.6,opacity:.85},ov);
+  // current-frame points
+  const cur = dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : null;
+  for (const t of times){
+    const fr=dig.frames.get(t);
+    const isCur = cur!=null && Math.abs(t-cur)<20;
+    for (const k in fr.pts){
+      const kp=KPS.find(x=>x.k===k);
+      el("circle",{cx:fr.pts[k][0],cy:fr.pts[k][1],r:isCur?r*1.5:r*0.8,fill:kp.color,opacity:isCur?1:.45,stroke:isCur?"#fff":"none","stroke-width":isCur?r/3:0},ov);
+    }
+  }
+}
+
+function renderFrames(){
+  const list=$("framesList"); list.textContent="";
+  const times=[...dig.frames.keys()].sort((a,b)=>a-b);
+  if (!times.length){ list.innerHTML='<p class="hint">No frames yet.</p>'; return; }
+  for (const t of times){
+    const fr=dig.frames.get(t);
+    const row=document.createElement("div"); row.className="framerow";
+    const tm=document.createElement("span"); tm.className="mono"; tm.style.minWidth="64px"; tm.textContent=(t/1000).toFixed(3)+"s";
+    const dots=document.createElement("span"); dots.className="dots";
+    for (const kp of KPS){ const dd=document.createElement("span"); dd.className="dot"+(fr.pts[kp.k]?" on":""); dd.title=kp.label; dots.appendChild(dd); }
+    const ptag=document.createElement("span"); ptag.className="mono hint"; ptag.textContent=fr.p?("P"+fr.p):"";
+    const go=document.createElement("button"); go.textContent="→"; go.title="Jump to frame"; go.style.padding="0 6px";
+    go.addEventListener("click",()=>{ if (dig.kind==="video") $("digVideo").currentTime=t/1000; });
+    const del=document.createElement("button"); del.className="x"; del.textContent="✕"; del.title="Delete frame";
+    del.addEventListener("click",()=>{ dig.frames.delete(t); renderFrames(); redrawOverlay(); });
+    row.append(tm,dots,ptag,go,del); list.appendChild(row);
+  }
+}
+
+/* save capture -> library */
+$("btnSavePlayer").addEventListener("click",()=>{
+  if (!dig.cal){ toast("Calibrate first"); return; }
+  const times=[...dig.frames.keys()].sort((a,b)=>a-b).filter(t=>dig.frames.get(t).pts.h);
+  if (times.length<6){ toast("Need at least 6 frames with a hands point"); return; }
+  const name=$("digName").value.trim() || "Digitized swing "+(savedPlayers.length+1);
+  const dir=parseInt($("digDir").value,10);
+  const view=$("digView").value;
+  const {pxPerIn,groundY,centerX}=dig.cal;
+  const t0=times[0];
+  const toWorld=(p)=>[dir*(p[0]-centerX)/pxPerIn, (groundY-p[1])/pxPerIn];
+  const anchors=times.map(t=>{
+    const fr=dig.frames.get(t);
+    const [x,y]=toWorld(fr.pts.h);
+    const a={t:(t-t0)/1000, p:fr.p||0, h:[x,y,null]};
+    if (fr.pts.c){ const [cx0,cy0]=toWorld(fr.pts.c); a.c=[cx0,cy0,null]; }
+    for (const [src,dst] of [["hip","hip"],["sh","sh"],["head","head"]])
+      if (fr.pts[src]){ a[dst]=toWorld(fr.pts[src]); }
+    return a;
+  });
+  const player={
+    id:"d"+Date.now().toString(36),
+    name, club:$("digClub").value, view,
+    source:"manual digitize", height:parseFloat($("digHeight").value)||71,
+    anchors,
+  };
+  savedPlayers.push(player); persistSaved(savedPlayers);
+  study.primary=player.id;
+  refreshSelectors(); rebuildStages();
+  toast(`Saved "${name}" — open Study mode to analyze it`);
+});
+
+/* ---------- mode switching ---------- */
+function setMode(m){
+  $("modeStudy").setAttribute("aria-pressed",String(m==="study"));
+  $("modeDigitize").setAttribute("aria-pressed",String(m==="dig"));
+  $("studyMain").hidden = m!=="study";
+  $("digMain").hidden = m!=="dig";
+  if (m==="study"){ refreshSelectors(); rebuildStages(); }
+}
+$("modeStudy").addEventListener("click",()=>setMode("study"));
+$("modeDigitize").addEventListener("click",()=>setMode("dig"));
+
+/* ---------- boot ---------- */
+refreshSelectors();
+rebuildStages();
+</script>
