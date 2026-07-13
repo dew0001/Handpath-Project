@@ -104,6 +104,11 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 .stagebox{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;min-width:0}
 .stagebox svg{display:block;width:100%;height:auto}
 .stagelabel{position:absolute;top:12px;left:16px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.annotbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.annotbar .lbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.annotbar input[type=color]{width:26px;height:24px;padding:0;border:1px solid var(--line);border-radius:5px;background:none;cursor:pointer}
+#annotTools button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
+.stagebox.drawing svg{cursor:crosshair}
 /* compare mode */
 #compareWrap{display:flex;flex-direction:column;gap:14px}
 #compareWrap.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -123,10 +128,12 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 /* ---------- transport ---------- */
 .transport{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:10px 14px;display:flex;flex-direction:column;gap:6px}
 .transport .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.transport input[type=range]{flex:1;min-width:160px}
-.ptrack{position:relative;height:20px;margin:0 2px}
-.ptrack .tick{position:absolute;top:0;width:1px;height:7px;background:var(--muted);opacity:.7}
-.ptrack .ticklabel{position:absolute;top:7px;transform:translateX(-50%);font-size:10px;color:var(--muted);cursor:pointer;user-select:none}
+.scrubstack{position:relative}
+.scrubstack input[type=range]{width:100%;display:block;accent-color:var(--accent)}
+.ptrack{position:relative;height:18px}
+/* ticks are inset by the range thumb radius (~7px) so they line up with the slider travel */
+.ptrack .tick{position:absolute;top:6px;width:1.5px;height:8px;background:var(--muted);opacity:.75;transform:translateX(-50%)}
+.ptrack .ticklabel{position:absolute;top:-1px;transform:translateX(-50%);font-size:10px;color:var(--muted);cursor:pointer;user-select:none;font-variant-numeric:tabular-nums}
 .ptrack .ticklabel:hover{color:var(--ink)}
 .readout{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
 .readout b{font-weight:700}
@@ -239,6 +246,7 @@ footer.app a{color:var(--accent)}
       <div class="stack">
         <label class="row" style="gap:6px"><input type="checkbox" id="tglCompare"> Compare two swings</label>
         <select id="compareSel" aria-label="Second swing" disabled></select>
+        <label class="row" style="gap:6px"><input type="checkbox" id="tglGhost" disabled> Ghost overlay (superimpose A + B)</label>
         <div id="resizeControls" class="stack" hidden>
           <p class="hint" style="margin:0">Match golfer size/position (per swing):</p>
           <label class="row" style="gap:6px;font-size:12px">A size <input type="range" id="axScale" min="0.6" max="1.6" step="0.01" value="1" style="flex:1"></label>
@@ -307,6 +315,22 @@ footer.app a{color:var(--accent)}
       </div>
     </div>
 
+    <div class="annotbar" id="annotBar">
+      <span class="lbl">Draw</span>
+      <div class="kbtns" id="annotTools">
+        <button data-tool="pen" title="Freehand pen">✏︎</button>
+        <button data-tool="line" title="Straight line">╱</button>
+        <button data-tool="arrow" title="Arrow">→</button>
+        <button data-tool="rect" title="Rectangle">▭</button>
+        <button data-tool="ellipse" title="Ellipse / circle">◯</button>
+      </div>
+      <input type="color" id="annotColor" value="#e0483a" title="Colour">
+      <label class="hint" style="gap:5px">w <input type="range" id="annotWidth" min="1" max="10" step="1" value="3" style="width:70px"></label>
+      <button id="annotUndo" title="Undo last shape">Undo</button>
+      <button id="annotClear" title="Remove all shapes">Clear</button>
+      <label class="hint" style="gap:5px"><input type="checkbox" id="annotShow" checked> Show</label>
+    </div>
+
     <div class="stages" id="stages">
       <div class="stagebox" id="faceBox">
         <span class="stagelabel">Face-on · caddie view</span>
@@ -321,7 +345,6 @@ footer.app a{color:var(--accent)}
     <div id="compareWrap" hidden></div>
 
     <div class="transport" id="soloTransport">
-      <div class="ptrack" id="ptrack"></div>
       <div class="controls">
         <button id="btnPlay" class="primary" style="min-width:74px">Play</button>
         <select id="playSpeed" aria-label="Playback speed">
@@ -330,12 +353,13 @@ footer.app a{color:var(--accent)}
           <option value="0.6">0.6×</option>
           <option value="1">1× real time</option>
         </select>
-        <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Scrub swing">
-        <span class="mono hint" id="tReadout" style="min-width:72px;text-align:right">0.00 s</span>
-      </div>
-      <div class="readout">
         <span class="phasechip" id="phaseChip">P1 · Address</span>
-        <span class="hint" id="phaseDesc"></span>
+        <span class="hint" id="phaseDesc" style="flex:1;min-width:0"></span>
+        <span class="mono hint" id="tReadout" style="min-width:60px;text-align:right">0.00 s</span>
+      </div>
+      <div class="scrubstack">
+        <div class="ptrack" id="ptrack"></div>
+        <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Scrub swing">
       </div>
     </div>
 
@@ -387,7 +411,7 @@ footer.app a{color:var(--accent)}
           </label>
         </div>
         <div class="row">
-          <label>fps <input type="number" id="digFps" value="30" min="10" max="240" style="width:52px"></label>
+          <label title="Your video's frame rate. Sets how far −1f/+1f steps (one frame = 1/fps sec) and how densely the AI samples. Doesn't affect saved timing.">fps <input type="number" id="digFps" value="30" min="10" max="240" style="width:52px"></label>
           <label>Height in <input type="number" id="digHeight" value="71" min="48" max="84" style="width:52px"></label>
         </div>
       </div>
@@ -490,10 +514,16 @@ footer.app a{color:var(--accent)}
   <div class="modal-card">
     <div class="modal-head">
       <b>The 10 P positions — reference</b>
-      <button id="pguideClose" title="Close">✕</button>
+      <div class="row" style="gap:6px">
+        <button id="pguideUpload" title="Use your own reference image (photo montage, etc.)">Use my image…</button>
+        <button id="pguideUseSchem" hidden title="Switch back to the built-in schematics">Show schematics</button>
+        <button id="pguideClose" title="Close">✕</button>
+      </div>
     </div>
+    <input type="file" id="pguideFile" accept="image/*" hidden>
+    <img id="pguideImg" alt="P-position reference" hidden style="width:100%;border-radius:8px;display:block">
     <div id="pguideGrid" class="pguide-grid"></div>
-    <p class="hint" style="margin:10px 0 0">Schematic, face-on with the target to the right. Match your golfer to these to place P tags — jump to the frame that matches each and tag it.</p>
+    <p class="hint" style="margin:10px 0 0">Schematic, face-on with the target to the right. Match your golfer to these to place P tags — jump to the frame that matches each and tag it. Prefer a photo reference? <b>Use my image</b> to load your own (saved in this browser).</p>
   </div>
 </div>
 
@@ -1006,6 +1036,7 @@ function rebuildStages(){
       t2.textContent="Capture one in Digitize mode — then it shows up here.";
     }
     dyn[view] = el("g",{class:"dyn"},svg);
+    drawAnnotations(svg, view);          // annotation layer on top
   }
   updateDynamic();
   buildPTrack();
@@ -1078,8 +1109,9 @@ function buildPTrack(){
     const i = S.phase.findIndex(v=>v>=p);
     if (i<0) continue;
     const frac = (S.t[i]-t0)/(t1-t0);
-    const tick = document.createElement("span"); tick.className="tick"; tick.style.left=(frac*100)+"%"; tr.appendChild(tick);
-    const lb = document.createElement("span"); lb.className="ticklabel mono"; lb.style.left=(frac*100)+"%";
+    const pos = `calc(7px + ${frac} * (100% - 14px))`;   // inset by thumb radius to match slider travel
+    const tick = document.createElement("span"); tick.className="tick"; tick.style.left=pos; tr.appendChild(tick);
+    const lb = document.createElement("span"); lb.className="ticklabel mono"; lb.style.left=pos;
     lb.textContent="P"+p; lb.title=PHASES[p-1][1];
     lb.addEventListener("click",()=>{ study.pos=frac; stopPlay(); updateDynamic(); });
     tr.appendChild(lb);
@@ -1918,9 +1950,27 @@ function buildPGuide(){
     cell.append(svg,ttl,nm); grid.appendChild(cell);
   });
 }
-function openPGuide(){ buildPGuide(); $("pguideModal").removeAttribute("hidden"); }
+const PGUIDE_IMG_KEY="handpathlab.pguide.img";
+function showPGuideImage(dataURL){
+  const img=$("pguideImg");
+  if (dataURL){ img.src=dataURL; img.hidden=false; $("pguideGrid").hidden=true; $("pguideUseSchem").hidden=false; }
+  else { img.hidden=true; $("pguideGrid").hidden=false; $("pguideUseSchem").hidden=true; }
+}
+function openPGuide(){
+  buildPGuide();
+  showPGuideImage(localStorage.getItem(PGUIDE_IMG_KEY)||null);
+  $("pguideModal").removeAttribute("hidden");
+}
 function closePGuide(){ $("pguideModal").setAttribute("hidden",""); }
 $("btnPGuide").addEventListener("click",openPGuide);
+$("pguideUpload").addEventListener("click",()=>$("pguideFile").click());
+$("pguideFile").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const fr=new FileReader();
+  fr.onload=()=>{ try{ localStorage.setItem(PGUIDE_IMG_KEY, fr.result); }catch(_){ toast("Image too large to save"); } showPGuideImage(fr.result); };
+  fr.readAsDataURL(f); e.target.value="";
+});
+$("pguideUseSchem").addEventListener("click",()=>{ localStorage.removeItem(PGUIDE_IMG_KEY); showPGuideImage(null); });
 $("pguideClose").addEventListener("click",closePGuide);
 $("pguideModal").addEventListener("click",(e)=>{ if(e.target===$("pguideModal")) closePGuide(); });
 document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && !$("pguideModal").hasAttribute("hidden")) closePGuide(); });
@@ -1999,7 +2049,7 @@ sizeDigLayout();
 /* =================================================================
    COMPARE MODE — two swings side by side, each with its own scrubber
    ================================================================= */
-const cmp = { on:false, B:null, posA:0, posB:0,
+const cmp = { on:false, ghost:false, B:null, posA:0, posB:0,
   xf:{ A:{s:1,dy:0}, B:{s:1,dy:0} }, vids:{A:null,B:null} };
 const slotSwingId = (slot)=> slot==="A"?study.primary:cmp.B;
 const slotPos = (slot)=> slot==="A"?cmp.posA:cmp.posB;
@@ -2038,14 +2088,75 @@ function syncCmpVideo(slot){
   const t=(rec.cal.vidT0||0)+comp.S.t[i];
   if(Math.abs(rec.el.currentTime-t)>0.02){ try{rec.el.currentTime=t;}catch(_){} }
 }
+// screen bbox of a swing's hand+club path in a given view, after the slot's xform
+function swingScreenBox(comp, view, xf){
+  const T=view==="face"?FACE:DTL, toX=view==="face"?fx:dx, toY=view==="face"?fy:dy;
+  const is3d=comp.has3d, S=comp.S, capView=comp.sw.view;
+  const HX = view==="face"? S.hx : (is3d? S.hz : (capView==="dtl"? S.hx : null));
+  if (!HX) return null;
+  const CX = view==="face"? S.cx : (is3d? S.cz : (capView==="dtl"? S.cx : null));
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9, any=false;
+  const add=(sx,sy)=>{ const px=T.cx+xf.s*(sx-T.cx), py=T.groundY+xf.dy+xf.s*(sy-T.groundY);
+    minx=Math.min(minx,px);maxx=Math.max(maxx,px);miny=Math.min(miny,py);maxy=Math.max(maxy,py);any=true; };
+  for (let i=0;i<DENSE;i++){ if(HX[i]!=null){ add(toX(HX[i]),toY(S.hy[i])); if(CX&&CX[i]!=null) add(toX(CX[i]),toY(S.cy[i])); } }
+  return any?{minx,miny,maxx,maxy}:null;
+}
+function fitBox(bb, T){
+  const mx=(bb.maxx-bb.minx)*0.32+30, my=(bb.maxy-bb.miny)*0.22+30;
+  let x=bb.minx-mx, y=bb.miny-my, w=(bb.maxx-bb.minx)+2*mx, h=(bb.maxy-bb.miny)+2*my;
+  const ar=T.w/T.h; if (w/h<ar){ const nw=h*ar; x-=(nw-w)/2; w=nw; } else { const nh=w/ar; y-=(nh-h)/2; h=nh; }
+  return `${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`;
+}
+function xformGroup(svg, view, xf){
+  const T=view==="face"?FACE:DTL;
+  return el("g",{transform:`translate(${T.cx} ${T.groundY+xf.dy}) scale(${xf.s}) translate(${-T.cx} ${-T.groundY})`},svg);
+}
 function drawPanel(svg, slot, view){
   svg.textContent="";
+  const comp=compiled(slotSwingId(slot));
+  const T=view==="face"?FACE:DTL;
+  let vb=`0 0 ${T.w} ${T.h}`;
+  if (comp){ const bb=swingScreenBox(comp, view, cmp.xf[slot]); if (bb) vb=fitBox(bb,T); }
+  svg.setAttribute("viewBox", vb);
   drawGrid(svg, view);
-  const comp=compiled(slotSwingId(slot)); if(!comp) return;
-  const xf=cmp.xf[slot], T=view==="face"?FACE:DTL;
-  const xg=el("g",{transform:`translate(${T.cx} ${T.groundY+xf.dy}) scale(${xf.s}) translate(${-T.cx} ${-T.groundY})`},svg);
+  if (!comp) return;
+  const xg=xformGroup(svg, view, cmp.xf[slot]);
   insertVideoRec(xg, cmp.vids[slot], view);
   renderSwingInto(xg, view, comp, { club:$("tglClub").checked, velocity:$("tglVelocity").checked });
+  drawPosRing(xg, comp, view, slotPos(slot), slot==="A"?"var(--c-down)":"var(--c-ov1)");
+}
+/* ghost: swing A solid + swing B superimposed as a translucent ghost, in one panel */
+function drawGhostView(view){
+  const svg=$(`cmp_ghost_${view}`); if(!svg) return;
+  svg.textContent="";
+  const T=view==="face"?FACE:DTL;
+  const cA=compiled(study.primary), cB=cmp.B?compiled(cmp.B):null;
+  const boxes=[];
+  if(cA){ const b=swingScreenBox(cA,view,cmp.xf.A); if(b)boxes.push(b); }
+  if(cB){ const b=swingScreenBox(cB,view,cmp.xf.B); if(b)boxes.push(b); }
+  let vb=`0 0 ${T.w} ${T.h}`;
+  if(boxes.length){ vb=fitBox({minx:Math.min(...boxes.map(b=>b.minx)),miny:Math.min(...boxes.map(b=>b.miny)),
+    maxx:Math.max(...boxes.map(b=>b.maxx)),maxy:Math.max(...boxes.map(b=>b.maxy))},T); }
+  svg.setAttribute("viewBox",vb);
+  drawGrid(svg,view);
+  if(cA){ const xg=xformGroup(svg,view,cmp.xf.A);
+    renderSwingInto(xg,view,cA,{club:$("tglClub").checked,velocity:false});
+    drawPosRing(xg,cA,view,cmp.posA,"var(--c-down)"); }
+  if(cB){ const xg=xformGroup(svg,view,cmp.xf.B); xg.setAttribute("opacity","0.55");
+    renderSwingInto(xg,view,cB,{overlayColor:"var(--c-ov1)"});
+    drawPosRing(xg,cB,view,cmp.posB,"var(--c-ov1)"); }
+}
+function drawGhostAll(){
+  const views=study.view==="both"?["face","dtl"]:[study.view];
+  for(const v of views) drawGhostView(v);
+  updateCmpPhase("A"); updateCmpPhase("B");
+}
+function drawPosRing(g, comp, view, pos, color){
+  const i=sampleIndex(comp,pos), S=comp.S, is3d=comp.has3d, capView=comp.sw.view;
+  const toX=view==="face"?fx:dx, toY=view==="face"?fy:dy;
+  const hx=view==="face"?S.hx[i]:(is3d?S.hz[i]:(capView==="dtl"?S.hx[i]:null));
+  if(hx==null) return;
+  el("circle",{cx:toX(hx),cy:toY(S.hy[i]),r:6,fill:"none",stroke:color,"stroke-width":2.2},g);
 }
 function updateCmpPhase(slot){
   const el2=$(`cmp_phase_${slot}`); if(!el2) return;
@@ -2055,6 +2166,7 @@ function updateCmpPhase(slot){
   el2.textContent = ph!=null ? `P${Math.max(1,Math.min(10,Math.floor(ph+1e-6)))} · ${PHASES[Math.max(1,Math.min(10,Math.floor(ph+1e-6)))-1][1]}` : fmt(comp.S.t[i],2)+" s";
 }
 function drawCmpSlot(slot){
+  if (cmp.ghost){ drawGhostAll(); return; }
   const views = study.view==="both"?["face","dtl"]:[study.view];
   for (const v of views){ const svg=$(`cmp_${slot}_${v}`); if(svg) drawPanel(svg,slot,v); }
   syncCmpVideo(slot); updateCmpPhase(slot);
@@ -2082,6 +2194,29 @@ function buildCmpScrubber(slot){
 function renderCompare(){
   const wrap=$("compareWrap"); wrap.textContent="";
   const views = study.view==="both"?["face","dtl"]:[study.view];
+  if (cmp.ghost){
+    wrap.className="";
+    const swA=swingById(study.primary), swB=swingById(cmp.B);
+    const leg=document.createElement("div"); leg.className="cmp-head"; leg.style.gap="16px";
+    leg.innerHTML=`<span><span class="tag">A</span> ${swA?swA.name:"—"}</span>`+
+      `<span><span class="tag" style="background:var(--c-ov1)">B</span> ${swB?swB.name+" (ghost)":"—"}</span>`;
+    wrap.appendChild(leg);
+    const panels=document.createElement("div"); panels.className="cmp-panels";
+    panels.style.gridTemplateColumns = views.length>1?"1fr 1fr":"1fr";
+    for (const v of views){
+      const panel=document.createElement("div"); panel.className="cmp-panel";
+      const lbl=document.createElement("span"); lbl.className="stagelabel"; lbl.textContent=v==="face"?"Face-on":"Down-the-line";
+      const svg=document.createElementNS(SVGNS,"svg"); svg.id=`cmp_ghost_${v}`;
+      svg.setAttribute("viewBox", v==="face"?"0 0 760 520":"0 0 620 520");
+      panel.append(lbl,svg); panels.appendChild(panel);
+    }
+    wrap.appendChild(panels);
+    wrap.appendChild(buildCmpScrubber("A"));
+    wrap.appendChild(buildCmpScrubber("B"));
+    ensureCompareVideos();
+    drawGhostAll();
+    return;
+  }
   wrap.className = study.view==="both" ? "" : "cols";
   for (const slot of ["A","B"]){
     const id=slotSwingId(slot), sw=swingById(id);
@@ -2115,12 +2250,13 @@ function refreshCompareSel(){
 }
 function setCompare(on){
   cmp.on=on;
-  $("compareSel").disabled=!on;
+  $("compareSel").disabled=!on; $("tglGhost").disabled=!on;
   $("stages").hidden=on; $("soloTransport").hidden=on; $("compareWrap").hidden=!on;
   if (on){ stopPlay(); refreshCompareSel(); $("resizeControls").hidden=!cmp.B; renderCompare(); }
   else { $("resizeControls").hidden=true; rebuildStages(); }
 }
 $("tglCompare").addEventListener("change",e=>setCompare(e.target.checked));
+$("tglGhost").addEventListener("change",e=>{ cmp.ghost=e.target.checked; renderCompare(); });
 $("compareSel").addEventListener("change",e=>{ cmp.B=e.target.value||null; $("resizeControls").hidden=!cmp.B; renderCompare(); });
 $("btnResizeReset").addEventListener("click",()=>{
   cmp.xf.A={s:1,dy:0}; cmp.xf.B={s:1,dy:0};
@@ -2131,6 +2267,75 @@ $("axScale").addEventListener("input",e=>{ cmp.xf.A.s=+e.target.value; drawCmpSl
 $("axDy").addEventListener("input",e=>{ cmp.xf.A.dy=+e.target.value; drawCmpSlot("A"); });
 $("bxScale").addEventListener("input",e=>{ cmp.xf.B.s=+e.target.value; drawCmpSlot("B"); });
 $("bxDy").addEventListener("input",e=>{ cmp.xf.B.dy=+e.target.value; drawCmpSlot("B"); });
+
+/* =================================================================
+   DRAWING / ANNOTATION tools on the Study stages
+   ================================================================= */
+const annoStore = { face:[], dtl:[] };
+const annoOrder = [];
+let annoTool=null, annoColor="#e0483a", annoWidth=3, annoShow=true, annoDrawing=null;
+
+function svgVB(svg){ const v=(svg.getAttribute("viewBox")||"0 0 760 520").split(/\s+/).map(Number); return {x:v[0],y:v[1],w:v[2],h:v[3]}; }
+function svgCoords(svg,e){ const r=svg.getBoundingClientRect(), vb=svgVB(svg);
+  return [ vb.x+(e.clientX-r.left)/r.width*vb.w, vb.y+(e.clientY-r.top)/r.height*vb.h ]; }
+function renderShape(g, s){
+  const a={stroke:s.color,"stroke-width":s.width,fill:"none","stroke-linecap":"round","stroke-linejoin":"round"};
+  if (s.tool==="pen"){ let d=""; s.pts.forEach((p,i)=>d+=(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)); if(s.pts.length) el("path",{...a,d},g); }
+  else if (s.tool==="line"||s.tool==="arrow"){
+    el("line",{...a,x1:s.pts[0][0],y1:s.pts[0][1],x2:s.pts[1][0],y2:s.pts[1][1]},g);
+    if (s.tool==="arrow"){ const [x1,y1]=s.pts[0],[x2,y2]=s.pts[1]; const ang=Math.atan2(y2-y1,x2-x1), L=s.width*2.4+9;
+      el("line",{...a,x1:x2,y1:y2,x2:x2-L*Math.cos(ang-0.42),y2:y2-L*Math.sin(ang-0.42)},g);
+      el("line",{...a,x1:x2,y1:y2,x2:x2-L*Math.cos(ang+0.42),y2:y2-L*Math.sin(ang+0.42)},g); } }
+  else if (s.tool==="rect"){ el("rect",{...a,x:Math.min(s.pts[0][0],s.pts[1][0]),y:Math.min(s.pts[0][1],s.pts[1][1]),
+    width:Math.abs(s.pts[1][0]-s.pts[0][0]),height:Math.abs(s.pts[1][1]-s.pts[0][1])},g); }
+  else if (s.tool==="ellipse"){ el("ellipse",{...a,cx:(s.pts[0][0]+s.pts[1][0])/2,cy:(s.pts[0][1]+s.pts[1][1])/2,
+    rx:Math.abs(s.pts[1][0]-s.pts[0][0])/2,ry:Math.abs(s.pts[1][1]-s.pts[0][1])/2},g); }
+}
+function drawAnnotations(svg, view){
+  if (!annoShow) return;
+  const layer=el("g",{class:"annotLayer"},svg);
+  for (const s of annoStore[view]) renderShape(layer, s);
+}
+function attachDraw(svgId, view){
+  const svg=$(svgId);
+  svg.addEventListener("pointerdown",(e)=>{
+    if (!annoTool || cmp.on) return;
+    e.preventDefault(); try{svg.setPointerCapture(e.pointerId);}catch(_){}
+    const p=svgCoords(svg,e);
+    annoDrawing={tool:annoTool,color:annoColor,width:annoWidth,pts:annoTool==="pen"?[p]:[p,p],svg,view};
+  });
+  svg.addEventListener("pointermove",(e)=>{
+    if (!annoDrawing || annoDrawing.svg!==svg) return;
+    const p=svgCoords(svg,e);
+    if (annoDrawing.tool==="pen") annoDrawing.pts.push(p); else annoDrawing.pts[1]=p;
+    const old=svg.querySelector(".annotLive"); if(old) old.remove();
+    renderShape(el("g",{class:"annotLive"},svg), annoDrawing);
+  });
+  const finish=(e)=>{
+    if (!annoDrawing || annoDrawing.svg!==svg) return;
+    try{svg.releasePointerCapture(e.pointerId);}catch(_){}
+    const live=svg.querySelector(".annotLive"); if(live) live.remove();
+    const s=annoDrawing; annoDrawing=null;
+    const big = s.tool==="pen" ? s.pts.length>1 : Math.hypot(s.pts[1][0]-s.pts[0][0],s.pts[1][1]-s.pts[0][1])>3;
+    if (big){ annoStore[view].push({tool:s.tool,color:s.color,width:s.width,pts:s.pts}); annoOrder.push(view);
+      const l=svg.querySelector(".annotLayer"); if(l) l.remove(); drawAnnotations(svg,view); }
+  };
+  svg.addEventListener("pointerup",finish);
+  svg.addEventListener("pointercancel",finish);
+}
+attachDraw("faceSvg","face"); attachDraw("dtlSvg","dtl");
+document.querySelectorAll("#annotTools button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    annoTool = annoTool===b.dataset.tool ? null : b.dataset.tool;
+    document.querySelectorAll("#annotTools button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.tool===annoTool)));
+    document.querySelectorAll(".stagebox").forEach(sb=>sb.classList.toggle("drawing", !!annoTool));
+  });
+});
+$("annotColor").addEventListener("input",e=>annoColor=e.target.value);
+$("annotWidth").addEventListener("input",e=>annoWidth=+e.target.value);
+$("annotUndo").addEventListener("click",()=>{ const v=annoOrder.pop(); if(v){ annoStore[v].pop(); rebuildStages(); } });
+$("annotClear").addEventListener("click",()=>{ annoStore.face=[]; annoStore.dtl=[]; annoOrder.length=0; rebuildStages(); });
+$("annotShow").addEventListener("change",e=>{ annoShow=e.target.checked; rebuildStages(); });
 
 /* ---------- boot ---------- */
 refreshSelectors();
