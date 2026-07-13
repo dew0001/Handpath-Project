@@ -17,19 +17,19 @@ opening `index.html` in any browser.
 
 ## Study mode
 
-- Built-in **model swings** (7-iron, driver) with hands + clubhead in pseudo-3D,
-  smoothed with Catmull-Rom over ~20 authored anchors
-- Face-on, down-the-line, or both stages side by side
+Shows **only swings you have digitized** — there are no built-in models or
+pro reference data. Capture a swing in Digitize mode and it appears here.
+
+- Face-on, down-the-line, or both stages side by side; `x = 0` marks body center
 - Backswing/downswing split coloring shows the wide-to-narrow loop
   (downswing runs inside the backswing arc)
-- Articulated stick golfer driven by hip turn / shoulder turn / tilt / sway /
-  head channels; DTL posture figure with shaft-plane reference line
+- Traced hand path, clubhead path, and hip/shoulder/head point traces
 - P1–P10 transport: scrub, play at 0.15×–1× real tempo, click a P to jump
-- Live metrics: hands x/y/z, hand speed, clubhead speed; at-impact club path
-  (in-to-out/out-to-in), attack angle, clubhead mph (3D data only)
+- Live metrics: hands x/y/z, hand speed, clubhead speed
 - Velocity coloring (hand-speed gradient along the path)
-- Overlay up to 3 swings for comparison; digitized swings persist in
-  localStorage with JSON export/import
+- Overlay up to 3 of your swings for comparison; the source video overlays
+  behind the path when present. All swings persist in localStorage with
+  JSON export/import
 
 ## Digitize mode (capture real swings)
 
@@ -69,15 +69,15 @@ the app imports directly. Point it at face-on or DTL footage of any player
 
 ## Honesty constraints (load-bearing, keep these)
 
-- Built-in coordinates are **representative models**, authored to match
-  published hub-path research (Nesbit & McGinnis: non-circular path, changing
-  radius, downswing inside backswing). They are **not measured data** and are
-  labeled as models in the UI.
-- No public dataset of per-pro raw hand coordinates exists. Pro paths must
+- The app ships with **no built-in swings and no pro/tour reference data** —
+  Study shows only paths the user digitized themselves.
+- No public dataset of per-pro raw hand coordinates exists. Any pro path must
   come from digitizing real footage (Digitize mode or the pipeline).
   **Never ship fabricated curves labeled with pro names.**
 - Digitized paths are approximate: lens distortion and off-square camera
   angles bend the trace; 2D captures have no depth channel.
+- `RESEARCH.md` retains the cited tour-average findings for reference, but that
+  data is intentionally **not** surfaced in the app UI.
 
 ## Roadmap
 

@@ -233,20 +233,6 @@ footer.app a{color:var(--accent)}
     </div>
 
     <div class="panel">
-      <h3>Checkpoints vs. tour average</h3>
-      <div id="checkpointBox"></div>
-      <p class="hint" style="margin:8px 0 0">Published tour-average bands (see <span class="mono">RESEARCH.md</span>). Bands are ranges across pros, not per-player data.</p>
-    </div>
-
-    <div class="panel">
-      <details>
-        <summary style="cursor:pointer;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700">Tour driver speed — measured</summary>
-        <div id="speedChart" style="margin-top:10px"></div>
-        <p class="hint" style="margin:8px 0 0">Real driver clubhead speed (ShotLink / TrackMan). Grey = no reliable public source (not estimated). Band = tour average 113–116.5 mph. Hover a bar for the source.</p>
-      </details>
-    </div>
-
-    <div class="panel">
       <h3>Library</h3>
       <div id="playersList"></div>
       <div class="row" style="margin-top:8px">
@@ -310,10 +296,9 @@ footer.app a{color:var(--accent)}
     </div>
 
     <div class="notice" id="honesty">
-      Built-in swings are <b>models</b> — representative paths authored to match published hub-path research
-      (non-circular arc, changing radius, downswing inside the backswing). They are not measured pro data.
-      To study a real pro: digitize their footage in <b>Digitize</b> mode, or run the AI pipeline
-      (<span class="mono">pipeline/track_swing.py</span>) on a video and import the JSON.
+      Every swing here is one <b>you digitized</b> — captured with <b>Auto-track (AI)</b> or by hand in
+      <b>Digitize</b> mode, or imported from a project file. Digitized paths are approximate: lens distortion and
+      off-square camera angles bend the trace. Add a swing to get started.
     </div>
   </div>
 </main>
@@ -500,66 +485,6 @@ function crSample(vals, u){
   return 0.5*((2*p1) + (-p0+p2)*f + (2*p0-5*p1+4*p2-p3)*f2 + (-p0+3*p1-3*p2+p3)*f3);
 }
 
-/* =================================================================
-   MODEL SWINGS (authored, labeled as models — not measured data)
-   anchor: t (s), p (phase 1-10, optional), h=[x,y,z], c=[x,y,z],
-   body: sway, hipT, shT, shTilt (deg, + = lead shoulder higher), hdX, hdY
-   ================================================================= */
-function A(t,p,h,c,sway,hipT,shT,shTilt,hdX,hdY){ return {t,p,h,c,sway,hipT,shT,shTilt,hdX,hdY}; }
-
-const MODEL_IRON = {
-  id:"model-7i", name:"Tour model · 7-iron", club:"7-iron", view:"3d", model:true,
-  height:71, clubLen:37, ballX:2, ballZ:32, stance:10.5,
-  anchors:[
-    A(0.00, 1,[  1.0,33.0, 13.0],[   2,  1.5, 32],  0.0,  0,   0,  6,  0.0, 66),
-    A(0.12, 0,[ -4.0,33.2, 12.5],[  -9,  2.0, 30], -0.4,  5,  10,  5, -0.3, 66),
-    A(0.24, 2,[-11.0,35.0, 11.0],[ -27,  8.0, 22], -0.9, 13,  26,  2, -0.8, 66),
-    A(0.35, 0,[-16.0,40.0,  9.0],[ -34, 22.0, 12], -1.4, 22,  46, -3, -1.3, 65.8),
-    A(0.45, 3,[-19.8,47.0,  7.0],[ -33, 44.0,  3], -1.9, 30,  66, -8, -1.7, 65.7),
-    A(0.55, 0,[-21.8,54.0,  5.0],[ -24, 62.0, -3], -2.2, 37,  81,-11, -2.0, 65.6),
-    A(0.66, 4,[-22.5,61.0,  4.0],[   3, 79.0, -8], -2.5, 43,  93,-13, -2.3, 65.6),
-    A(0.74, 5,[-20.0,55.0,  6.0],[  -6, 76.0, -5],  0.2, 31,  86,-12, -2.6, 65.4),
-    A(0.80, 0,[-16.0,47.0,  8.2],[ -18, 66.0,  0],  2.0, 18,  72,-10, -2.8, 65.3),
-    A(0.86, 6,[-10.0,38.0, 10.6],[ -30, 48.0,  7],  3.5,  2,  50, -7, -3.0, 65.2),
-    A(0.905,0,[ -4.0,33.0, 12.2],[ -32, 26.0, 17],  4.2,-14,  30, -3, -3.0, 65.2),
-    A(0.92, 0,[ -1.0,32.0, 12.8],[ -22, 10.0, 25],  4.5,-24,  12,  3, -3.0, 65.2),
-    A(0.933,0,[  1.5,31.0, 13.3],[  -8,  1.8, 31.2],4.8,-32, -8,  8, -3.0, 65.2),
-    A(0.94, 7,[  4.0,30.5, 13.6],[   2,  0.8, 32],  5.0,-38, -18, 10, -3.0, 65.2),
-    A(0.951,0,[  7.0,31.5, 13.2],[  16,  0.7, 32.2],5.2,-42, -26, 11, -2.8, 65.2),
-    A(0.975,8,[ 13.0,34.5, 11.5],[  38, 13.0, 24],  5.5,-48, -38, 12, -2.4, 65.3),
-    A(1.05, 0,[ 18.0,42.0,  9.0],[  36, 38.0, 10],  5.8,-55, -58, 13, -1.4, 65.4),
-    A(1.13, 9,[ 21.0,52.0,  5.0],[  27, 80.0, -4],  6.1,-60, -76, 14,  0.2, 65.6),
-    A(1.25, 0,[ 18.5,60.0,  0.0],[   8, 88.0,-14],  6.4,-64, -88, 15,  2.0, 65.8),
-    A(1.42,10,[ 14.0,65.0, -4.0],[ -10, 72.0,-18],  6.6,-68, -96, 15,  4.0, 66),
-  ],
-};
-
-const MODEL_DRIVER = {
-  id:"model-dr", name:"Tour model · Driver", club:"Driver", view:"3d", model:true,
-  height:71, clubLen:45.5, ballX:12, ballZ:38, stance:12.5,
-  anchors:[
-    A(0.00, 1,[  0.0,34.5, 14.0],[   8,  2.0, 38],  0.0,  0,   4,  8,  0.0, 66),
-    A(0.14, 0,[ -6.0,34.6, 13.5],[ -12,  4.0, 35], -0.6,  7,  14,  6, -0.5, 66),
-    A(0.28, 2,[-13.0,36.5, 12.0],[ -33, 12.0, 26], -1.2, 16,  32,  2, -1.2, 66),
-    A(0.40, 0,[-19.0,42.0,  9.5],[ -40, 28.0, 12], -2.0, 26,  54, -4, -2.0, 65.8),
-    A(0.52, 3,[-23.0,50.0,  7.0],[ -38, 52.0,  0], -2.8, 35,  74, -9, -2.6, 65.7),
-    A(0.63, 0,[-25.0,58.0,  5.0],[ -25, 72.0, -6], -3.2, 43,  90,-12, -3.1, 65.6),
-    A(0.75, 4,[-25.5,66.0,  4.0],[   7, 88.0,-12], -3.6, 49, 103,-14, -3.6, 65.6),
-    A(0.83, 5,[-23.0,59.0,  6.0],[  -3, 84.0, -8], -0.4, 35,  95,-13, -4.0, 65.4),
-    A(0.89, 0,[-18.0,50.0,  8.5],[ -19, 72.0, -1],  2.4, 21,  79,-11, -4.3, 65.3),
-    A(0.95, 6,[-11.0,40.0, 11.0],[ -34, 52.0,  8],  4.4,  4,  56, -8, -4.5, 65.2),
-    A(1.00, 0,[ -4.0,34.5, 13.0],[ -28, 16.0, 24],  5.4,-15,  34, -3, -4.6, 65.2),
-    A(1.008,0,[ -0.5,33.8, 13.3],[ -16,  7.0, 29],  5.7,-24,  14,  3, -4.65,65.2),
-    A(1.022,0,[  3.0,33.2, 13.6],[  -4,  2.3, 36.8],6.0,-32, -6,  8, -4.7, 65.2),
-    A(1.03, 7,[  7.0,33.0, 14.0],[  11.5, 2.6, 38],  6.4,-42, -20, 12, -4.8, 65.2),
-    A(1.042,8,[ 11.0,35.0, 13.0],[  34,  4.2, 37.6],6.9,-52, -42, 14, -4.0, 65.3),
-    A(1.07, 0,[ 15.0,40.0, 10.5],[  39, 20.0, 20],  7.05,-55,-52, 14.5,-3.4,65.35),
-    A(1.11, 0,[ 20.0,46.0,  8.0],[  40, 44.0, 10],  7.2,-58, -64, 15, -2.6, 65.4),
-    A(1.23, 9,[ 23.0,56.0,  4.0],[  30, 88.0, -6],  7.4,-64, -82, 16, -0.6, 65.6),
-    A(1.35, 0,[ 20.0,64.0, -1.0],[  10, 94.0,-16],  7.7,-68, -94, 16,  1.6, 65.8),
-    A(1.52,10,[ 15.0,68.0, -5.0],[ -12, 76.0,-20],  7.9,-72,-100, 16,  4.0, 66),
-  ],
-};
 
 /* =================================================================
    Swing compilation: anchors -> dense samples of every channel.
@@ -673,94 +598,9 @@ function compileSwing(sw){
 }
 
 /* =================================================================
-   Library (models + saved players)
+   Library — only swings the user has digitized (no built-in models/pros)
    ================================================================= */
-/* =================================================================
-   RESEARCHED REFERENCE DATA (see RESEARCH.md for full citations).
-   Tour-average BANDS, not fabricated per-player curves. Every value here
-   traces to a published source; coaching-org values flagged medium-confidence.
-   ================================================================= */
-const TOUR_REF = {
-  // [P-position]: { metric: [lo, hi, source] }
-  bands: [
-    { p:4, label:"Top of backswing", rows:[
-      ["Pelvis (hip) turn", 40, 50, "TPI (~45° tour avg)"],
-      ["Shoulder (thorax) turn", 85, 95, "TPI (~90°)"],
-      ["X-Factor separation", 40, 50, "TPI / Meister 2011"],
-    ]},
-    { p:7, label:"Impact", rows:[
-      ["Pelvis open to target", 20, 45, "3D research summary"],
-      ["Thorax near square", -5, 20, "GolfWRX / 3D"],
-    ]},
-  ],
-  tempo: "≈ 3 : 1 backswing:downswing (Tour Tempo)",
-  impact: {
-    "7-iron": "Tour avg: ~90–92 mph · AoA ~ −4° (TrackMan)",
-    "Driver": "Tour avg: ~113–115 mph · AoA −1.3°…−0.9° (TrackMan)",
-  },
-  note: "Bands are published tour-average ranges, not per-player measurements. Sources in RESEARCH.md.",
-};
-
-// The only named pros in the 30 with REAL published quantitative swing data.
-const PLAYER_PROFILES = {
-  "Rory McIlroy": {
-    club:"Driver", source:"GEARS 3D via Golf.com/TaylorMade 2019 (approx.)",
-    rows:[
-      ["Hip turn at top (P4)", "≈42°"],
-      ["Shoulder turn at top (P4)", "≈116°"],
-      ["X-Factor at top", "≈75° (outlier — tour avg ~45°)"],
-      ["Shoulders P4→P7", "114° closed → 35° open"],
-      ["Hips unwind top→impact", ">100°"],
-      ["Peak pelvis velocity", "≈720°/s (tour avg ~500)"],
-      ["Driver clubhead speed", "≈123 mph (ShotLink 2024)"],
-    ],
-  },
-  "Jon Rahm": {
-    club:"Driver", source:"TrackMan Golf blog + ShotLink (primary)",
-    rows:[
-      ["Driver attack angle", "+5.2° (steep up)"],
-      ["Club path (6-iron)", "slightly left"],
-      ["Driver clubhead speed", "≈120 mph (ShotLink 2023)"],
-    ],
-  },
-};
-
-/* Measured per-player DRIVER clubhead speed (mph). Real ShotLink/TrackMan data;
-   null = no reliable public source found (NOT estimated). See RESEARCH.md.
-   Tour avg reference band ~113–116.5 mph (ShotLink ~116; TrackMan driver ~113). */
-const PLAYER_SPEED = [
-  ["Bryson DeChambeau", 133.0, "measured", "Swing Man Golf, 2021 (last full PGA season)"],
-  ["Brooks Koepka", 124.28, "measured", "ShotLink ~2022"],
-  ["Justin Thomas", 124.5, "measured", "ShotLink 2024 (high side — mild caution)"],
-  ["Tony Finau", 123.93, "measured", "ShotLink 2024"],
-  ["Rory McIlroy", 123.45, "measured", "ShotLink 2024"],
-  ["Xander Schauffele", 123.0, "measured", "ShotLink 2024"],
-  ["Tiger Woods", 121.9, "measured", "ShotLink 2018 (old/partial)"],
-  ["Wyndham Clark", 122.0, "measured", "Sportsbox AI 2024 + ShotLink"],
-  ["Will Zalatoris", 120.0, "approx", "golf.com ~2021 (down ~5 mph post-2023 surgery)"],
-  ["Jon Rahm", 119.68, "measured", "ShotLink 2023"],
-  ["Ludvig Åberg", 119.7, "measured", "ShotLink 2024"],
-  ["Jason Day", 119.47, "measured", "ShotLink ~2017 (older; ~116–117 in 2020)"],
-  ["Joaquin Niemann", 119.0, "measured", "Swing Man Golf, pre-LIV PGA seasons"],
-  ["Scottie Scheffler", 118.83, "measured", "ShotLink 2024"],
-  ["Matt Fitzpatrick", 118.13, "measured", "Fit For Golf 2022 (~119–121 recently)"],
-  ["Sam Burns", 118.0, "approx", "MyGolfSpy 2025 ('over 118 mph')"],
-  ["Keegan Bradley", 115.61, "measured", "PGA Tour stat 2024"],
-  ["Hideki Matsuyama", 115.5, "measured", "ShotLink 2024"],
-  ["Jordan Spieth", 115.0, "approx", "Golf Digest (rounded/self-reported)"],
-  ["Tommy Fleetwood", 114.93, "measured", "ShotLink 2024"],
-  ["Collin Morikawa", 114.12, "measured", "ShotLink 2024"],
-  ["Ernie Els", 112.95, "measured", "ShotLink ~2013 (old data)"],
-  ["Russell Henley", 110.89, "measured", "PGA Tour stat 2026 WITB"],
-  ["Viktor Hovland", null, null, "no reliable recent source"],
-  ["Patrick Cantlay", null, null, "no reliable source (distance only)"],
-  ["Max Homa", null, null, "no reliable source"],
-  ["Sungjae Im", null, null, "no reliable source"],
-  ["Corey Conners", null, null, "no reliable source"],
-  ["Sahith Theegala", null, null, "no reliable source"],
-  ["Taylor Pendrith", null, null, "no reliable source"],
-];
-const SPEED_BAND = [113, 116.5];
+/* (built-in tour models, pro profiles, and tour-average reference data removed — library holds only user-digitized swings) */
 
 const LS_KEY = "handpathlab.players.v1";
 function loadSaved(){
@@ -768,7 +608,7 @@ function loadSaved(){
 }
 function persistSaved(list){ localStorage.setItem(LS_KEY, JSON.stringify(list)); }
 let savedPlayers = loadSaved();
-const models = [MODEL_IRON, MODEL_DRIVER];
+const models = [];   // no built-in models; Study shows only user-digitized swings
 function allSwings(){ return models.concat(savedPlayers); }
 function swingById(id){ return allSwings().find(s=>s.id===id); }
 
@@ -797,7 +637,7 @@ function idbVideo(op, id, blob){
    STUDY MODE — rendering
    ================================================================= */
 const study = {
-  primary: "model-7i",
+  primary: (savedPlayers[0] && savedPlayers[0].id) || null,
   overlays: new Set(),
   view: "face",
   pos: 0,               // 0..1 normalized time of primary swing
@@ -835,7 +675,7 @@ function drawGrid(svg, view){
   if ($("tglGrid").checked){
     const xmin = view==="face" ? -84 : -48, xmax = view==="face" ? 84 : 72;
     for (let gx=Math.ceil(xmin/12)*12; gx<=xmax; gx+=12){
-      el("line",{x1:toX(gx),y1:toY(100),x2:toX(gx),y2:toY(0),stroke:gx===0?"var(--grid-major)":"var(--grid)","stroke-width":1},g);
+      el("line",{x1:toX(gx),y1:toY(100),x2:toX(gx),y2:toY(0),stroke:gx===0?"var(--grid-major)":"var(--grid)","stroke-width":gx===0?1.6:1},g);
     }
     for (let gy=0; gy<=96; gy+=12){
       el("line",{x1:14,y1:toY(gy),x2:W-14,y2:toY(gy),stroke:gy===0?"var(--ground)":"var(--grid)","stroke-width":gy===0?1.6:1},g);
@@ -846,7 +686,11 @@ function drawGrid(svg, view){
     }
   } else {
     el("line",{x1:14,y1:toY(0),x2:W-14,y2:toY(0),stroke:"var(--ground)","stroke-width":1.6},g);
+    el("line",{x1:toX(0),y1:toY(96),x2:toX(0),y2:toY(0),stroke:"var(--grid-major)","stroke-width":1.4},g);
   }
+  // x = 0 axis label (body center — sternum on face-on; body line on DTL)
+  const zlab = el("text",{x:toX(0),y:toY(0)+15,"text-anchor":"middle","font-size":10,"font-weight":"600",fill:"var(--muted)"},g);
+  zlab.textContent = view==="face" ? "x = 0 (body center)" : "x = 0 (body)";
   if (view==="face"){
     const t1=el("text",{x:W-16,y:toY(0)+16,"text-anchor":"end","font-size":10,fill:"var(--muted)"},g);
     t1.textContent="target →";
@@ -1071,6 +915,13 @@ function rebuildStages(){
       club: $("tglClub").checked,
       velocity: $("tglVelocity").checked,
     });
+    if (!allSwings().length){
+      const W = view==="face"?FACE.w:DTL.w;
+      const t1=el("text",{x:W/2,y:200,"text-anchor":"middle","font-size":15,"font-weight":"600",fill:"var(--muted)"},svg);
+      t1.textContent="No swings yet";
+      const t2=el("text",{x:W/2,y:224,"text-anchor":"middle","font-size":12,fill:"var(--muted)"},svg);
+      t2.textContent="Capture one in Digitize mode — then it shows up here.";
+    }
     dyn[view] = el("g",{class:"dyn"},svg);
   }
   updateDynamic();
@@ -1129,62 +980,6 @@ function updateDynamic(){
     $("phaseDesc").textContent = "No P tags on this capture — add them in Digitize mode.";
   }
   $("scrub").value = Math.round(study.pos*1000);
-  updateCheckpoints();
-}
-
-function updateCheckpoints(){
-  const box = $("checkpointBox"); if (!box) return;
-  const comp = compiled(study.primary);
-  box.textContent = "";
-
-  // real per-player profile card, if this swing's name matches a researched player
-  if (comp){
-    const nm = Object.keys(PLAYER_PROFILES).find(k => comp.sw.name.includes(k));
-    if (nm){
-      const pr = PLAYER_PROFILES[nm];
-      const card = document.createElement("div");
-      card.style.cssText = "border:1px solid var(--accent);border-radius:6px;padding:6px 8px;margin-bottom:8px";
-      let h = `<div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);font-weight:700">${nm} · measured</div>`;
-      for (const [k,v] of pr.rows) h += `<div class="row" style="justify-content:space-between;gap:8px"><span class="hint">${k}</span><span class="mono">${v}</span></div>`;
-      h += `<div class="hint" style="margin-top:4px;font-size:11px">source: ${pr.source}</div>`;
-      card.innerHTML = h; box.appendChild(card);
-    }
-  }
-
-  // current-phase band comparison for models with body data
-  if (!comp || !comp.hasBody || comp.S.phase[0]==null){
-    const d=document.createElement("p"); d.className="hint"; d.style.margin="0";
-    d.textContent = "Body-angle bands show for model swings with hip/shoulder data. Tempo ≈ 3:1 (Tour Tempo).";
-    box.appendChild(d); return;
-  }
-  const i = sampleIndex(comp, study.pos);
-  const curP = Math.max(1, Math.min(10, Math.round(comp.S.phase[i]||1)));
-  const band = TOUR_REF.bands.find(b => b.p===curP);
-
-  const hdr = document.createElement("div");
-  hdr.className = "hint"; hdr.style.marginBottom = "6px";
-  hdr.innerHTML = band ? `At <b>P${curP} · ${band.label}</b> — model vs tour band:` :
-    `Scrub to <b>P4</b> (top) or <b>P7</b> (impact) to compare against tour-average bands.`;
-  box.appendChild(hdr);
-
-  if (band){
-    const hipT = Math.abs(comp.S.hipT[i]||0), shT = Math.abs(comp.S.shT[i]||0), xf = shT - hipT;
-    const modelVals = { "Pelvis (hip) turn":hipT, "Shoulder (thorax) turn":shT, "X-Factor separation":xf,
-                        "Pelvis open to target":hipT, "Thorax near square":shT };
-    const t = document.createElement("table"); t.className="datatable"; t.style.width="100%";
-    t.innerHTML = "<tr><th style='text-align:left'>metric</th><th>model</th><th>tour band</th></tr>";
-    for (const [metric, lo, hi, src] of band.rows){
-      const mv = modelVals[metric];
-      const inBand = mv!=null && mv>=lo && mv<=hi;
-      const color = inBand ? "var(--accent)" : "var(--c-down)";
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td style="text-align:left" title="${src}">${metric}</td>`+
-        `<td class="mono" style="color:${color}">${mv!=null?mv.toFixed(0)+"°":"—"}</td>`+
-        `<td class="mono hint">${lo}–${hi}°</td>`;
-      t.appendChild(tr);
-    }
-    box.appendChild(t);
-  }
 }
 
 function updateImpactStats(){
@@ -1195,7 +990,7 @@ function updateImpactStats(){
     const dir = im.path > 0.4 ? "in-to-out" : im.path < -0.4 ? "out-to-in" : "neutral";
     box.innerHTML = `At impact — club path <b class="mono">${im.path>=0?"+":""}${im.path.toFixed(1)}°</b> (${dir}) · attack angle <b class="mono">${im.aoa>=0?"+":""}${im.aoa.toFixed(1)}°</b> · clubhead <b class="mono">${im.clubMph.toFixed(0)} mph</b>`;
   } else {
-    box.textContent = "Impact metrics need 3D club data (models) — digitized 2D captures show path shape only.";
+    box.textContent = "Digitized 2D captures show path shape only. Track a second synced angle for true 3D impact numbers.";
   }
 }
 
@@ -1235,16 +1030,21 @@ function buildAnchorTable(){
 /* ---------- selectors / library UI ---------- */
 function refreshSelectors(){
   const sel = $("primarySel"); sel.textContent="";
-  for (const s of allSwings()){
+  const swings = allSwings();
+  if (!swings.length){
+    const o=document.createElement("option"); o.value=""; o.textContent="No swings yet — digitize one";
+    sel.appendChild(o); sel.value="";
+  }
+  for (const s of swings){
     const o=document.createElement("option"); o.value=s.id;
-    o.textContent = s.name + (s.model ? "  (model)" : "");
+    o.textContent = s.name;
     sel.appendChild(o);
   }
-  sel.value = study.primary;
+  if (study.primary) sel.value = study.primary;
   const sw = swingById(study.primary);
-  $("primaryMeta").innerHTML = sw ? (sw.model
-    ? `<span class="badge model">model</span> ${sw.club} · authored to hub-path research, not measured data`
-    : `<span class="badge real">digitized</span> ${sw.club||""} · ${sw.view==="dtl"?"down-the-line":"face-on"} capture${sw.source?` · ${sw.source}`:""}`) : "";
+  $("primaryMeta").innerHTML = sw
+    ? `<span class="badge real">digitized</span> ${sw.club||""} · ${sw.view==="dtl"?"down-the-line":"face-on"} capture${sw.source?` · ${sw.source}`:""}`
+    : `<span class="hint">Your digitized swings appear here. Open <b>Digitize</b> mode to capture one.</span>`;
 
   const ov = $("overlayList"); ov.textContent="";
   let oi=0;
@@ -1288,7 +1088,7 @@ function refreshSelectors(){
       persistSaved(savedPlayers);
       study.compiled.delete(s.id);
       study.overlays.delete(s.id);
-      if (study.primary===s.id) study.primary = "model-7i";
+      if (study.primary===s.id) study.primary = (savedPlayers[0] && savedPlayers[0].id) || null;
       refreshSelectors(); rebuildStages();
     });
     row.append(nm,exp,del); pl.appendChild(row);
@@ -1343,7 +1143,7 @@ $("btnPlay").addEventListener("click",()=> study.playing?stopPlay():startPlay())
 $("scrub").addEventListener("input",e=>{ stopPlay(); study.pos=e.target.value/1000; updateDynamic(); });
 
 $("primarySel").addEventListener("change",e=>{
-  study.primary=e.target.value; study.overlays.delete(study.primary);
+  study.primary=e.target.value||null; if (study.primary) study.overlays.delete(study.primary);
   study.pos=0; stopPlay(); refreshSelectors(); rebuildStages();
 });
 for (const id of ["tglClub","tglGolfer","tglVelocity","tglPlane","tglGrid","tglVideo"])
@@ -2064,58 +1864,9 @@ $("modeDigitize").addEventListener("click",()=>setMode("dig"));
 window.addEventListener("resize",()=>{ sizeDigLayout(); if(!$("digMain").hidden && !$("digMedia").hasAttribute("hidden")){ fitMediaToStage(); redrawOverlay(); } });
 sizeDigLayout();
 
-/* ---------- tour driver-speed reference chart ---------- */
-function buildSpeedChart(){
-  const box = $("speedChart"); if (!box) return;
-  box.textContent = "";
-  const measured = PLAYER_SPEED.filter(p=>p[1]!=null);
-  const nodata = PLAYER_SPEED.filter(p=>p[1]==null);
-  const lo = 104, hi = 135;                       // x-domain (mph)
-  const W = 268, rowH = 15, padL = 96, barW = W - padL - 30;
-  const xf = v => padL + (Math.max(lo,Math.min(hi,v))-lo)/(hi-lo)*barW;
-  const H = (measured.length+nodata.length)*rowH + 26;
-  const svg = document.createElementNS(SVGNS,"svg");
-  svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.setAttribute("width","100%");
-  svg.style.display="block";
-  // tour-average band
-  const bx0=xf(SPEED_BAND[0]), bx1=xf(SPEED_BAND[1]);
-  el("rect",{x:bx0,y:4,width:bx1-bx0,height:H-22,fill:"var(--accent)",opacity:.10},svg);
-  el("text",{x:(bx0+bx1)/2,y:H-6,"text-anchor":"middle","font-size":8,fill:"var(--muted)"},svg).textContent="tour avg";
-  // axis ticks
-  for (const t of [110,120,130]){
-    el("line",{x1:xf(t),y1:4,x2:xf(t),y2:H-20,stroke:"var(--grid)","stroke-width":1},svg);
-    el("text",{x:xf(t),y:H-6,"text-anchor":"middle","font-size":8,fill:"var(--muted)"},svg).textContent=t;
-  }
-  let y = 8;
-  const drawRow = (name, v, conf, src, muted) => {
-    const g = el("g",{},svg);
-    const title = el("title",{},g);
-    title.textContent = muted ? `${name}: ${src}` : `${name}: ${v} mph — ${src}`;
-    el("text",{x:padL-6,y:y+rowH*0.72,"text-anchor":"end","font-size":9,fill: muted?"var(--muted)":"var(--ink)"},g)
-      .textContent = name.length>15 ? name.split(" ").slice(-1)[0] : name;
-    if (muted){
-      el("line",{x1:padL,y1:y+rowH/2,x2:padL+18,y2:y+rowH/2,stroke:"var(--line)","stroke-width":2,"stroke-dasharray":"2 2"},g);
-      el("text",{x:padL+22,y:y+rowH*0.72,"font-size":8,fill:"var(--muted)"},g).textContent="no public data";
-    } else {
-      const col = conf==="approx" ? "var(--c-down)" : "var(--accent)";
-      el("rect",{x:padL,y:y+2,width:Math.max(2,xf(v)-padL),height:rowH-5,rx:2,fill:col,opacity: conf==="approx"?.55:.9},g);
-      el("text",{x:xf(v)+3,y:y+rowH*0.72,"font-size":8.5,fill:"var(--muted)"},g).textContent=v.toFixed(0);
-    }
-    y += rowH;
-  };
-  for (const [n,v,c,s] of measured) drawRow(n,v,c,s,false);
-  for (const [n,v,c,s] of nodata) drawRow(n,null,null,s,true);
-  box.appendChild(svg);
-  const key=document.createElement("div"); key.className="row"; key.style.cssText="gap:12px;margin-top:6px";
-  key.innerHTML='<span class="chip"><span class="swatch" style="background:var(--accent)"></span>measured</span>'+
-    '<span class="chip"><span class="swatch" style="background:var(--c-down);opacity:.55"></span>approx</span>';
-  box.appendChild(key);
-}
-
 /* ---------- boot ---------- */
 refreshSelectors();
 rebuildStages();
-buildSpeedChart();
 </script>
 </body>
 </html>
