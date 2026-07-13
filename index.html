@@ -137,9 +137,10 @@ table.datatable th{color:var(--muted);font-weight:600}
 .scrollx{overflow-x:auto}
 
 /* ---------- digitizer ---------- */
-.dig-stage{position:relative;background:var(--stage);border:1px solid var(--line);border-radius:10px;overflow:hidden;min-height:220px}
-.dig-stage video,.dig-stage img{display:block;width:100%;height:auto}
-.dig-stage svg.overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+.dig-stage{position:relative;background:var(--stage);border:1px solid var(--line);border-radius:10px;min-height:200px;display:flex;justify-content:center;align-items:flex-start}
+#digMedia{position:relative;width:fit-content;max-width:100%;margin:0 auto}
+#digMedia video,#digMedia img{display:block;max-width:100%;max-height:56vh;width:auto;height:auto;border-radius:9px}
+#digMedia svg.overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
 .dig-empty{padding:60px 20px;text-align:center;color:var(--muted)}
 .kbtns{display:flex;flex-wrap:wrap;gap:6px}
 .kbtns button[aria-pressed="true"]{border-color:transparent;font-weight:700;color:var(--accent-ink)}
@@ -196,6 +197,7 @@ footer.app a{color:var(--accent)}
         <label class="row"><input type="checkbox" id="tglGolfer" checked> Golfer (hips · shoulders · head)</label>
         <label class="row"><input type="checkbox" id="tglVelocity"> Velocity coloring (hand speed)</label>
         <label class="row"><input type="checkbox" id="tglPlane"> Shaft plane (DTL)</label>
+        <label class="row"><input type="checkbox" id="tglVideo" checked> Video overlay (digitized)</label>
         <label class="row"><input type="checkbox" id="tglGrid" checked> 12″ grid</label>
       </div>
     </div>
@@ -346,7 +348,7 @@ footer.app a{color:var(--accent)}
     <div class="panel">
       <h3>3 · Track points</h3>
       <div class="kbtns" id="kpBtns"></div>
-      <p class="hint" style="margin:8px 0 0">Step frames, click the selected point on each frame. Same framing keeps calibration valid.</p>
+      <p class="hint" style="margin:8px 0 0">Step frames, click to place the selected point. <b>Drag any existing dot to fix it.</b> Same framing keeps calibration valid.</p>
       <div class="row" style="margin-top:8px">
         <label>Tag phase
           <select id="digPhase">
@@ -382,9 +384,11 @@ footer.app a{color:var(--accent)}
         <p>Step through frames with ←/→, calibrate once, then click hand / clubhead / hip / shoulder / head positions per frame.</p>
         <p>Prefer automation? Run <span class="mono">pipeline/track_swing.py</span> on the video — MediaPipe pose-tracks it and auto-tags P positions — then import the JSON in Study mode.</p>
       </div>
-      <video id="digVideo" hidden playsinline muted></video>
-      <img id="digImage" hidden alt="digitizing frame">
-      <svg class="overlay" id="digOverlay" hidden></svg>
+      <div id="digMedia" hidden>
+        <video id="digVideo" hidden playsinline muted></video>
+        <img id="digImage" hidden alt="digitizing frame">
+        <svg class="overlay" id="digOverlay" hidden></svg>
+      </div>
     </div>
     <div class="transport">
       <div class="controls">
@@ -724,6 +728,27 @@ const models = [MODEL_IRON, MODEL_DRIVER];
 function allSwings(){ return models.concat(savedPlayers); }
 function swingById(id){ return allSwings().find(s=>s.id===id); }
 
+/* IndexedDB store for digitized-swing video blobs (too big for localStorage) */
+function idbVideo(op, id, blob){
+  return new Promise((res,rej)=>{
+    let rq;
+    try { rq = indexedDB.open("handpathlab-videos", 1); }
+    catch(e){ return res(null); }
+    rq.onupgradeneeded=()=>{ if(!rq.result.objectStoreNames.contains("vids")) rq.result.createObjectStore("vids"); };
+    rq.onerror=()=>res(null);
+    rq.onsuccess=()=>{
+      const db=rq.result;
+      let tx;
+      try { tx=db.transaction("vids", op==="get"?"readonly":"readwrite"); }
+      catch(e){ return res(null); }
+      const st=tx.objectStore("vids");
+      const r = op==="get" ? st.get(id) : op==="put" ? st.put(blob,id) : st.delete(id);
+      r.onsuccess=()=>res(r.result);
+      r.onerror=()=>res(null);
+    };
+  });
+}
+
 /* =================================================================
    STUDY MODE — rendering
    ================================================================= */
@@ -935,12 +960,60 @@ function drawGolferDtl(g, comp, i){
 /* dynamic layers (updated on scrub without rebuilding paths) */
 const dyn = { face:null, dtl:null, faceBack:null, dtlBack:null };
 
+/* ---- digitized-video overlay in Study mode ---- */
+let studyVid = null;   // { id, el, url, cal, ready }
+function videoSwing(){
+  const sw = swingById(study.primary);
+  return (sw && sw.hasVideo && sw.cal && sw.view==="face") ? sw : null;
+}
+function ensureStudyVideo(){
+  const want = $("tglVideo").checked ? videoSwing() : null;
+  if (!want){ teardownStudyVideo(); return; }
+  if (studyVid && studyVid.id===want.id) return;      // already loaded
+  teardownStudyVideo();
+  const rec = { id:want.id, cal:want.cal, ready:false, el:null, url:null };
+  studyVid = rec;
+  idbVideo("get", want.id).then(blob=>{
+    if (!blob || studyVid!==rec) return;
+    const v=document.createElement("video");
+    v.muted=true; v.playsInline=true; v.preload="auto"; v.style.pointerEvents="none";
+    v.style.width=rec.cal.vidW+"px"; v.style.height=rec.cal.vidH+"px";
+    rec.url=URL.createObjectURL(blob); v.src=rec.url;
+    v.addEventListener("loadeddata",()=>{ rec.el=v; rec.ready=true; rebuildStages(); },{once:true});
+  });
+}
+function teardownStudyVideo(){
+  if (studyVid && studyVid.url) URL.revokeObjectURL(studyVid.url);
+  studyVid=null;
+}
+function insertVideoGroup(svg){
+  if (!studyVid || !studyVid.ready) return;
+  const sw = swingById(study.primary);
+  if (!sw || sw.id!==studyVid.id) return;
+  const {pxPerIn,groundY,centerX,dir,vidW,vidH}=studyVid.cal;
+  const a=dir*FACE.s/pxPerIn, d=FACE.s/pxPerIn;
+  const e=FACE.cx - a*centerX, f=FACE.groundY - d*groundY;
+  const g=el("g",{transform:`matrix(${a} 0 0 ${d} ${e} ${f})`, opacity:0.6},svg);
+  const fo=el("foreignObject",{x:0,y:0,width:vidW,height:vidH},g);
+  fo.appendChild(studyVid.el);
+  svg.insertBefore(g, svg.firstChild);   // behind everything
+}
+function syncStudyVideo(comp,i){
+  if (!studyVid || !studyVid.ready) return;
+  const t = (studyVid.cal.vidT0||0) + comp.S.t[i];
+  if (Math.abs(studyVid.el.currentTime - t) > 0.02){
+    try { studyVid.el.currentTime = t; } catch(_){}
+  }
+}
+
 function rebuildStages(){
+  ensureStudyVideo();
   const pv = compiled(study.primary);
   for (const [view, svgId] of [["face","faceSvg"],["dtl","dtlSvg"]]){
     const svg = $(svgId);
     svg.textContent = "";
     drawGrid(svg, view);
+    if (view==="face") insertVideoGroup(svg);           // digitized footage, behind grid+paths
     if (pv) drawBallAndPlane(svg, view, pv);
     dyn[view+"Back"] = el("g",{class:"dynback"},svg);   // golfer skeleton, under paths
     // overlays first (under primary)
@@ -975,6 +1048,7 @@ function updateDynamic(){
   if (!comp) return;
   const i = sampleIndex(comp, study.pos);
   const { S } = comp;
+  syncStudyVideo(comp, i);
   for (const view of ["face","dtl"]){
     const g = dyn[view]; if (!g) continue;
     g.textContent = "";
@@ -1162,6 +1236,7 @@ function refreshSelectors(){
         setTimeout(()=>{ del.dataset.armed=""; del.textContent="✕"; }, 2500);
         return;
       }
+      if (s.hasVideo) idbVideo("del", s.id);
       savedPlayers = savedPlayers.filter(p=>p.id!==s.id);
       persistSaved(savedPlayers);
       study.compiled.delete(s.id);
@@ -1199,7 +1274,7 @@ $("primarySel").addEventListener("change",e=>{
   study.primary=e.target.value; study.overlays.delete(study.primary);
   study.pos=0; stopPlay(); refreshSelectors(); rebuildStages();
 });
-for (const id of ["tglClub","tglGolfer","tglVelocity","tglPlane","tglGrid"])
+for (const id of ["tglClub","tglGolfer","tglVelocity","tglPlane","tglGrid","tglVideo"])
   $(id).addEventListener("change",rebuildStages);
 
 document.querySelectorAll(".viewtabs button").forEach(b=>{
@@ -1277,11 +1352,11 @@ function normalizePipeline(j){
    DIGITIZE MODE
    ================================================================= */
 const KPS = [
-  {k:"h", label:"Hands", color:"var(--c-down)"},
-  {k:"c", label:"Clubhead", color:"var(--c-club)"},
-  {k:"hip", label:"Lead hip", color:"var(--c-ov1)"},
-  {k:"sh", label:"Lead shoulder", color:"var(--c-back)"},
-  {k:"head", label:"Head", color:"var(--c-ov2)"},
+  {k:"h", label:"Hands", abbr:"Hands", color:"var(--c-down)"},
+  {k:"c", label:"Clubhead", abbr:"Club", color:"var(--c-club)"},
+  {k:"hip", label:"Lead hip", abbr:"Hip", color:"var(--c-ov1)"},
+  {k:"sh", label:"Lead shoulder", abbr:"Shldr", color:"var(--c-back)"},
+  {k:"head", label:"Head", abbr:"Head", color:"var(--c-ov2)"},
 ];
 const dig = {
   media:null, kind:null, fps:30,
@@ -1289,7 +1364,22 @@ const dig = {
   kp:0,
   frames:new Map(),   // tMs -> {pts:{h:[px,py],...}, p:phase}
   clicks:[],          // undo stack: [tMs, key]
+  videoFile:null,     // the loaded video File (for saving with the swing)
+  drag:null,          // {tMs, key} while dragging an existing point
 };
+function digCurMs(){ return dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : null; }
+function nearestPoint(px,py,tolPx){
+  const cur = digCurMs();
+  if (cur==null) return null;
+  // match the frame closest to current time (within 40ms)
+  let tMs=null, best=1e9;
+  for (const t of dig.frames.keys()){ const d=Math.abs(t-cur); if (d<40 && d<best){best=d;tMs=t;} }
+  if (tMs==null) return null;
+  const fr=dig.frames.get(tMs);
+  let hitK=null, bd=tolPx*tolPx;
+  for (const k in fr.pts){ const p=fr.pts[k]; const dd=(p[0]-px)**2+(p[1]-py)**2; if (dd<bd){bd=dd;hitK=k;} }
+  return hitK ? {tMs, key:hitK} : null;
+}
 
 for (let p=1;p<=10;p++){
   const o=document.createElement("option"); o.value=p; o.textContent=`P${p} · ${PHASES[p-1][1]}`;
@@ -1319,7 +1409,8 @@ $("videoFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return;
   const v=$("digVideo");
   v.src=URL.createObjectURL(f); v.hidden=false; $("digImage").hidden=true; $("digEmpty").hidden=true;
-  dig.media=v; dig.kind="video";
+  $("digMedia").removeAttribute("hidden");
+  dig.media=v; dig.kind="video"; dig.videoFile=f;
   v.addEventListener("loadedmetadata",()=>{ setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000); },{once:true});
   resetCapture();
 });
@@ -1327,7 +1418,8 @@ $("imageFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return;
   const img=$("digImage");
   img.src=URL.createObjectURL(f); img.hidden=false; $("digVideo").hidden=true; $("digEmpty").hidden=true;
-  dig.media=img; dig.kind="image";
+  $("digMedia").removeAttribute("hidden");
+  dig.media=img; dig.kind="image"; dig.videoFile=null;
   img.addEventListener("load",()=>setupOverlay(img.naturalWidth,img.naturalHeight),{once:true});
   toast("Image loaded — swap screenshots between clicks; same framing keeps calibration.");
 });
@@ -1359,7 +1451,7 @@ $("digScrub").addEventListener("input",e=>{ if (dig.kind==="video") $("digVideo"
 $("digVideo").addEventListener("timeupdate",()=>{
   $("digTime").textContent=($("digVideo").currentTime).toFixed(3)+" s";
   $("digScrub").value=Math.round($("digVideo").currentTime*1000);
-  redrawOverlay();
+  redrawOverlay(); renderFrames();
 });
 
 /* calibration */
@@ -1376,11 +1468,14 @@ $("btnCalibrate").addEventListener("click",()=>{
 });
 
 /* clicks on the overlay */
+function ovCoords(e){
+  const ov=$("digOverlay"); const r=ov.getBoundingClientRect();
+  return [(e.clientX-r.left)/r.width * parseFloat(ov.dataset.w),
+          (e.clientY-r.top)/r.height * parseFloat(ov.dataset.h)];
+}
 $("digOverlay").addEventListener("pointerdown",(e)=>{
   const ov=$("digOverlay");
-  const r=ov.getBoundingClientRect();
-  const px=(e.clientX-r.left)/r.width * parseFloat(ov.dataset.w);
-  const py=(e.clientY-r.top)/r.height * parseFloat(ov.dataset.h);
+  const [px,py]=ovCoords(e);
   if (dig.calStep>=0 && dig.calStep<3){
     dig._calPts.push([px,py]);
     dig.calStep++;
@@ -1399,7 +1494,16 @@ $("digOverlay").addEventListener("pointerdown",(e)=>{
     renderCalSteps(); redrawOverlay(); return;
   }
   if (!dig.cal){ toast("Calibrate first (panel 2)"); return; }
-  const tMs = dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : dig.frames.size*33;
+  // EDIT: if the click lands on an existing point in the current frame, grab it to drag
+  const tol = Math.max(8, (parseFloat(ov.dataset.w)||100)/40);
+  const hit = nearestPoint(px,py,tol);
+  if (hit){
+    dig.drag = hit;
+    ov.setPointerCapture(e.pointerId);
+    return;
+  }
+  // otherwise place/replace the selected keypoint on the current frame
+  const tMs = dig.kind==="video" ? digCurMs() : dig.frames.size*33;
   if (!dig.frames.has(tMs)) dig.frames.set(tMs,{pts:{},p:0});
   dig.frames.get(tMs).pts[KPS[dig.kp].k]=[px,py];
   dig.clicks.push([tMs,KPS[dig.kp].k]);
@@ -1407,6 +1511,19 @@ $("digOverlay").addEventListener("pointerdown",(e)=>{
   if (ph) { dig.frames.get(tMs).p=parseInt(ph,10); $("digPhase").value=""; }
   renderFrames(); redrawOverlay();
 });
+$("digOverlay").addEventListener("pointermove",(e)=>{
+  if (!dig.drag) return;
+  const [px,py]=ovCoords(e);
+  const fr=dig.frames.get(dig.drag.tMs);
+  if (fr && fr.pts[dig.drag.key]){ fr.pts[dig.drag.key]=[px,py]; redrawOverlay(); }
+});
+function endDrag(e){
+  if (!dig.drag) return;
+  try{ $("digOverlay").releasePointerCapture(e.pointerId); }catch(_){}
+  dig.drag=null; renderFrames(); redrawOverlay();
+}
+$("digOverlay").addEventListener("pointerup",endDrag);
+$("digOverlay").addEventListener("pointercancel",endDrag);
 $("digPhase").addEventListener("change",()=>{
   if (dig.kind!=="video") return;
   const tMs=Math.round($("digVideo").currentTime*1000);
@@ -1442,14 +1559,20 @@ function redrawOverlay(){
     if (h) d+=(d?"L":"M")+h[0].toFixed(1)+" "+h[1].toFixed(1);
   }
   if (d) el("path",{d,fill:"none",stroke:"var(--c-down)","stroke-width":r/1.6,opacity:.85},ov);
-  // current-frame points
+  // current-frame points (with labels), past frames faint
   const cur = dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : null;
   for (const t of times){
     const fr=dig.frames.get(t);
-    const isCur = cur!=null && Math.abs(t-cur)<20;
+    const isCur = cur!=null && Math.abs(t-cur)<40;
     for (const k in fr.pts){
       const kp=KPS.find(x=>x.k===k);
-      el("circle",{cx:fr.pts[k][0],cy:fr.pts[k][1],r:isCur?r*1.5:r*0.8,fill:kp.color,opacity:isCur?1:.45,stroke:isCur?"#fff":"none","stroke-width":isCur?r/3:0},ov);
+      const [cx0,cy0]=fr.pts[k];
+      el("circle",{cx:cx0,cy:cy0,r:isCur?r*1.5:r*0.8,fill:kp.color,opacity:isCur?1:.4,stroke:isCur?"#fff":"none","stroke-width":isCur?r/3:0},ov);
+      if (isCur){
+        const tx=el("text",{x:cx0+r*1.9,y:cy0+r*0.6,"font-size":r*2.0,"font-family":"sans-serif","font-weight":"600",
+          fill:kp.color,stroke:"var(--stage)","stroke-width":r*0.4,"paint-order":"stroke"},ov);
+        tx.textContent=kp.abbr;
+      }
     }
   }
 }
@@ -1458,18 +1581,27 @@ function renderFrames(){
   const list=$("framesList"); list.textContent="";
   const times=[...dig.frames.keys()].sort((a,b)=>a-b);
   if (!times.length){ list.innerHTML='<p class="hint">No frames yet.</p>'; return; }
+  const curMs = digCurMs();
   for (const t of times){
     const fr=dig.frames.get(t);
     const row=document.createElement("div"); row.className="framerow";
-    const tm=document.createElement("span"); tm.className="mono"; tm.style.minWidth="64px"; tm.textContent=(t/1000).toFixed(3)+"s";
+    if (curMs!=null && Math.abs(t-curMs)<40) row.style.background="var(--panel2)";
+    const tm=document.createElement("button"); tm.className="mono"; tm.style.cssText="min-width:60px;padding:1px 5px;text-align:left";
+    tm.textContent=(t/1000).toFixed(3)+"s"; tm.title="Jump to this frame";
+    tm.addEventListener("click",()=>{ if (dig.kind==="video"){ $("digVideo").currentTime=t/1000; } });
     const dots=document.createElement("span"); dots.className="dots";
-    for (const kp of KPS){ const dd=document.createElement("span"); dd.className="dot"+(fr.pts[kp.k]?" on":""); dd.title=kp.label; dots.appendChild(dd); }
-    const ptag=document.createElement("span"); ptag.className="mono hint"; ptag.textContent=fr.p?("P"+fr.p):"";
-    const go=document.createElement("button"); go.textContent="→"; go.title="Jump to frame"; go.style.padding="0 6px";
-    go.addEventListener("click",()=>{ if (dig.kind==="video") $("digVideo").currentTime=t/1000; });
-    const del=document.createElement("button"); del.className="x"; del.textContent="✕"; del.title="Delete frame";
+    for (const kp of KPS){
+      const dd=document.createElement("span"); dd.className="dot"+(fr.pts[kp.k]?" on":"");
+      if (fr.pts[kp.k]){
+        dd.title="Delete "+kp.label+" on this frame"; dd.style.cursor="pointer"; dd.style.background=kp.color;
+        dd.addEventListener("click",()=>{ delete fr.pts[kp.k]; if(!Object.keys(fr.pts).length) dig.frames.delete(t); renderFrames(); redrawOverlay(); });
+      } else dd.title=kp.label+" — not set";
+      dots.appendChild(dd);
+    }
+    const ptag=document.createElement("span"); ptag.className="mono hint"; ptag.style.minWidth="22px"; ptag.textContent=fr.p?("P"+fr.p):"";
+    const del=document.createElement("button"); del.className="x"; del.textContent="✕"; del.title="Delete whole frame";
     del.addEventListener("click",()=>{ dig.frames.delete(t); renderFrames(); redrawOverlay(); });
-    row.append(tm,dots,ptag,go,del); list.appendChild(row);
+    row.append(tm,dots,ptag,del); list.appendChild(row);
   }
 }
 
@@ -1493,16 +1625,26 @@ $("btnSavePlayer").addEventListener("click",()=>{
       if (fr.pts[src]){ a[dst]=toWorld(fr.pts[src]); }
     return a;
   });
+  const id="d"+Date.now().toString(36);
   const player={
-    id:"d"+Date.now().toString(36),
+    id,
     name, club:$("digClub").value, view,
     source:"manual digitize", height:parseFloat($("digHeight").value)||71,
     anchors,
   };
+  // store calibration + video so Study mode can overlay the path on the footage
+  if (dig.kind==="video" && dig.videoFile){
+    player.cal = { pxPerIn, groundY, centerX, dir,
+      vidW:$("digVideo").videoWidth, vidH:$("digVideo").videoHeight, vidT0:t0/1000 };
+    player.hasVideo = true;
+    idbVideo("put", id, dig.videoFile).then(ok=>{
+      if(!ok){ player.hasVideo=false; persistSaved(savedPlayers); toast("Saved (video too large to store — path kept)"); }
+    });
+  }
   savedPlayers.push(player); persistSaved(savedPlayers);
   study.primary=player.id;
   refreshSelectors(); rebuildStages();
-  toast(`Saved "${name}" — open Study mode to analyze it`);
+  toast(`Saved "${name}"${player.hasVideo?" with video":""} — open Study mode`);
 });
 
 /* ---------- mode switching ---------- */

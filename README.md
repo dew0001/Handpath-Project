@@ -35,8 +35,12 @@ opening `index.html` in any browser.
 
 Load a video (or screenshot sequence), calibrate from the golfer's height in
 three clicks, then step frames and click **hands / clubhead / lead hip /
-lead shoulder / head** per frame. Tag P positions as you go. Saved captures
-appear in Study mode.
+lead shoulder / head** per frame — each tracked point is labeled on the frame.
+**Drag any existing dot to fix its position**, or delete individual points /
+whole frames from the captured-frames list. Tag P positions as you go. Saved
+captures appear in Study mode, and the **source video is stored with the swing
+(IndexedDB) so Study mode overlays your traced path directly on the footage**,
+scrubber-synced — toggle it with "Video overlay" in the Display panel.
 
 ## AI pipeline (automated digitizing)
 
