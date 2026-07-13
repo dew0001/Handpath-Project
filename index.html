@@ -311,6 +311,17 @@ footer.app a{color:var(--accent)}
         </div>
         <input type="file" id="videoFile" accept="video/*" hidden>
         <input type="file" id="imageFile" accept="image/*" hidden>
+        <input type="file" id="projectFile" accept=".json,application/json" hidden>
+        <div class="row">
+          <button id="btnAutoTrack">✨ Auto-track (AI)</button>
+          <button id="btnImportProject" title="Re-open a saved .handpath.json project (video + points) to keep editing">Import project…</button>
+        </div>
+        <div id="aiProgress" class="hint" style="display:none">
+          <div style="height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;margin:2px 0">
+            <div id="aiBar" style="height:100%;width:0;background:var(--accent);transition:width .1s"></div>
+          </div>
+          <span id="aiStatus"></span>
+        </div>
         <div class="row">
           <label>View
             <select id="digView">
@@ -346,11 +357,15 @@ footer.app a{color:var(--accent)}
     </div>
 
     <div class="panel">
-      <h3>3 · Track points</h3>
+      <h3>3 · Track &amp; correct</h3>
       <div class="kbtns" id="kpBtns"></div>
-      <p class="hint" style="margin:8px 0 0">Step frames, click to place the selected point. <b>Drag any existing dot to fix it.</b> Same framing keeps calibration valid.</p>
+      <p class="hint" style="margin:8px 0 0">Step frames, click to place the selected point. <b>Drag any existing dot to fix it</b> (AI dots show a dashed ring until you touch them). Same framing keeps calibration valid.</p>
       <div class="row" style="margin-top:8px">
-        <label>Tag phase
+        <label>Jump to P</label>
+        <div class="kbtns" id="pNav" style="flex:1"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label>Tag this frame as
           <select id="digPhase">
             <option value="">—</option>
           </select>
@@ -367,7 +382,10 @@ footer.app a{color:var(--accent)}
           <label>Club <select id="digClub"><option>Driver</option><option selected>7-iron</option><option>Wedge</option><option>Other</option></select></label>
           <button id="btnSavePlayer" class="primary">Save to library</button>
         </div>
-        <p class="hint">Needs calibration + ≥ 6 frames with a hands point. Saved swings appear in Study mode.</p>
+        <div class="row">
+          <button id="btnExportProject">Export project (video + points)…</button>
+        </div>
+        <p class="hint">Needs calibration + ≥ 6 frames with a hands point. Saved swings appear in Study mode. <b>Export project</b> bundles the video + tracked points into one file you can re-open later to keep editing.</p>
       </div>
     </div>
 
@@ -380,9 +398,9 @@ footer.app a{color:var(--accent)}
   <div class="stagewrap">
     <div class="dig-stage" id="digStage">
       <div class="dig-empty" id="digEmpty">
-        <p><b>Load a face-on or down-the-line video</b> (or a screenshot sequence).</p>
-        <p>Step through frames with ←/→, calibrate once, then click hand / clubhead / hip / shoulder / head positions per frame.</p>
-        <p>Prefer automation? Run <span class="mono">pipeline/track_swing.py</span> on the video — MediaPipe pose-tracks it and auto-tags P positions — then import the JSON in Study mode.</p>
+        <p><b>Load a face-on or down-the-line video</b>, then hit <b>✨ Auto-track (AI)</b>.</p>
+        <p>The AI pose-tracks the swing in your browser, auto-calibrates from the golfer's height, and tags P1–P10. Then step frame-by-frame or jump to a P and <b>drag any dot to correct it</b> — AI points show a dashed ring until you fix them.</p>
+        <p>Prefer full manual? Calibrate (3 clicks) and place points yourself. Either way, <b>Export project</b> to save the video + points and re-open later. (Offline or big batch? <span class="mono">pipeline/track_swing.py</span> does the same on your machine.)</p>
       </div>
       <div id="digMedia" hidden>
         <video id="digVideo" hidden playsinline muted></video>
@@ -1229,6 +1247,9 @@ function refreshSelectors(){
   for (const s of savedPlayers){
     const row=document.createElement("div"); row.className="playeritem";
     const nm=document.createElement("span"); nm.className="nm"; nm.textContent=s.name;
+    const exp=document.createElement("button"); exp.textContent="⤓"; exp.title="Export editable project"+(s.hasVideo?" (with video)":"");
+    exp.style.padding="1px 7px";
+    exp.addEventListener("click",()=>exportSavedProject(s));
     const del=document.createElement("button"); del.className="x"; del.textContent="✕"; del.title="Delete "+s.name;
     del.addEventListener("click",()=>{
       if (!del.dataset.armed){          // two-step delete (confirm() is blocked in sandboxed embeds)
@@ -1244,8 +1265,33 @@ function refreshSelectors(){
       if (study.primary===s.id) study.primary = "model-7i";
       refreshSelectors(); rebuildStages();
     });
-    row.append(nm,del); pl.appendChild(row);
+    row.append(nm,exp,del); pl.appendChild(row);
   }
+}
+
+/* Export a SAVED library swing as an editable project (rebuild pixel frames from
+   its world anchors + calibration, bundle the stored video). */
+async function exportSavedProject(s){
+  if (!s.cal){ toast("This swing has no calibration to rebuild an editable project"); return; }
+  const {pxPerIn,groundY,centerX,dir,vidW,vidH,vidT0}=s.cal;
+  const toPx=(x,y)=>[centerX + dir*x*pxPerIn, groundY - y*pxPerIn];
+  const frames=(s.anchors||[]).map(a=>{
+    const pts={}; const [hx,hy]=toPx(a.h[0],a.h[1]); pts.h=[hx,hy];
+    if (a.c){ const [cx,cy]=toPx(a.c[0],a.c[1]); pts.c=[cx,cy]; }
+    for (const k of ["hip","sh","head"]) if (a[k]){ const [x,y]=toPx(a[k][0],a[k][1]); pts[k]=[x,y]; }
+    return { tMs: Math.round(((vidT0||0)+a.t)*1000), p:a.p||0, pts, ai:[] };
+  });
+  const proj={ app:"handpath-lab-project", version:1,
+    meta:{ name:s.name, club:s.club, view:s.view, dir:dir||1, height:s.height||71 },
+    cal:{ pxPerIn, groundY, centerX }, vidW, vidH, frames, video:null };
+  if (s.hasVideo){
+    const blob=await idbVideo("get", s.id);
+    if (blob) proj.video=await blobToDataURL(blob);
+  }
+  const b=new Blob([JSON.stringify(proj)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(b);
+  a.download=s.name.replace(/[^\w.-]+/g,"_")+".handpath.json"; a.click(); URL.revokeObjectURL(a.href);
+  toast(proj.video?"Exported (with video) — Import project in Digitize to edit":"Exported (no stored video)");
 }
 
 /* ---------- playback ---------- */
@@ -1505,7 +1551,9 @@ $("digOverlay").addEventListener("pointerdown",(e)=>{
   // otherwise place/replace the selected keypoint on the current frame
   const tMs = dig.kind==="video" ? digCurMs() : dig.frames.size*33;
   if (!dig.frames.has(tMs)) dig.frames.set(tMs,{pts:{},p:0});
-  dig.frames.get(tMs).pts[KPS[dig.kp].k]=[px,py];
+  const frame=dig.frames.get(tMs);
+  frame.pts[KPS[dig.kp].k]=[px,py];
+  if (frame.ai) frame.ai.delete(KPS[dig.kp].k);   // now a manual correction
   dig.clicks.push([tMs,KPS[dig.kp].k]);
   const ph=$("digPhase").value;
   if (ph) { dig.frames.get(tMs).p=parseInt(ph,10); $("digPhase").value=""; }
@@ -1515,7 +1563,7 @@ $("digOverlay").addEventListener("pointermove",(e)=>{
   if (!dig.drag) return;
   const [px,py]=ovCoords(e);
   const fr=dig.frames.get(dig.drag.tMs);
-  if (fr && fr.pts[dig.drag.key]){ fr.pts[dig.drag.key]=[px,py]; redrawOverlay(); }
+  if (fr && fr.pts[dig.drag.key]){ fr.pts[dig.drag.key]=[px,py]; if (fr.ai) fr.ai.delete(dig.drag.key); redrawOverlay(); }
 });
 function endDrag(e){
   if (!dig.drag) return;
@@ -1567,7 +1615,11 @@ function redrawOverlay(){
     for (const k in fr.pts){
       const kp=KPS.find(x=>x.k===k);
       const [cx0,cy0]=fr.pts[k];
-      el("circle",{cx:cx0,cy:cy0,r:isCur?r*1.5:r*0.8,fill:kp.color,opacity:isCur?1:.4,stroke:isCur?"#fff":"none","stroke-width":isCur?r/3:0},ov);
+      const isAI = fr.ai && fr.ai.has(k);
+      el("circle",{cx:cx0,cy:cy0,r:isCur?r*1.5:r*0.8,fill:isAI?"none":kp.color,opacity:isCur?1:.4,
+        stroke:isAI?kp.color:(isCur?"#fff":"none"),"stroke-width":isAI?r*0.55:(isCur?r/3:0),
+        "stroke-dasharray":isAI?`${r*0.9} ${r*0.7}`:""},ov);
+      if (isAI) el("circle",{cx:cx0,cy:cy0,r:r*0.35,fill:kp.color,opacity:isCur?1:.4},ov);
       if (isCur){
         const tx=el("text",{x:cx0+r*1.9,y:cy0+r*0.6,"font-size":r*2.0,"font-family":"sans-serif","font-weight":"600",
           fill:kp.color,stroke:"var(--stage)","stroke-width":r*0.4,"paint-order":"stroke"},ov);
@@ -1603,6 +1655,7 @@ function renderFrames(){
     del.addEventListener("click",()=>{ dig.frames.delete(t); renderFrames(); redrawOverlay(); });
     row.append(tm,dots,ptag,del); list.appendChild(row);
   }
+  buildPNav();
 }
 
 /* save capture -> library */
@@ -1646,6 +1699,217 @@ $("btnSavePlayer").addEventListener("click",()=>{
   refreshSelectors(); rebuildStages();
   toast(`Saved "${name}"${player.hasVideo?" with video":""} — open Study mode`);
 });
+
+/* =================================================================
+   AI AUTO-TRACK (MediaPipe Pose, in-browser) + P navigation
+   ================================================================= */
+const LM = { NOSE:0, L_SH:11, R_SH:12, L_WR:15, R_WR:16, L_HIP:23, R_HIP:24, L_ANK:27, R_ANK:28 };
+const NOSE_TO_ANKLE = 0.89;   // nose height ÷ standing height (matches pipeline)
+let _poseLandmarker = null, _poseLoading = null;
+
+async function loadPoseLandmarker(){
+  if (_poseLandmarker) return _poseLandmarker;
+  if (_poseLoading) return _poseLoading;
+  _poseLoading = (async ()=>{
+    const V = "0.10.14";
+    const mod = await import(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${V}/vision_bundle.mjs`);
+    const fileset = await mod.FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${V}/wasm`);
+    _poseLandmarker = await mod.PoseLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task" },
+      runningMode: "VIDEO", numPoses: 1,
+    });
+    return _poseLandmarker;
+  })();
+  return _poseLoading;
+}
+
+function seekTo(v, t){
+  return new Promise((res)=>{
+    const done=()=>{ v.removeEventListener("seeked",done); res(); };
+    v.addEventListener("seeked",done);
+    v.currentTime = t;
+  });
+}
+
+async function runAutoTrack(){
+  if (dig.kind!=="video"){ toast("Load a video first"); return; }
+  const v=$("digVideo");
+  const fps=parseFloat($("digFps").value)||30;
+  const dur=v.duration||0;
+  if (!dur){ toast("Video not ready yet"); return; }
+  const prog=$("aiProgress"), bar=$("aiBar"), status=$("aiStatus");
+  prog.style.display="block"; bar.style.width="4%"; status.textContent="Loading AI model…";
+  let landmarker;
+  try { landmarker = await loadPoseLandmarker(); }
+  catch(e){
+    prog.style.display="none";
+    toast("AI model couldn't load (needs internet). Use manual tracking or pipeline/track_swing.py.");
+    return;
+  }
+  status.textContent="Tracking pose…";
+  const wasPlaying=!v.paused; v.pause();
+  const total=Math.floor(dur*fps);
+  const step=Math.max(1, Math.ceil(total/120));      // cap ~120 samples
+  const perFrame=[];
+  let ts=0;
+  for (let fr=0; fr<total; fr+=step){
+    const t=Math.min(dur-1e-3, fr/fps);
+    await seekTo(v, t);
+    ts += 33;                                          // strictly increasing timestamp for the VIDEO runner
+    let res;
+    try { res = landmarker.detectForVideo(v, ts); } catch(e){ continue; }
+    if (res && res.landmarks && res.landmarks[0]) perFrame.push({ t, lm: res.landmarks[0] });
+    const p=Math.min(0.95, fr/total);
+    bar.style.width=(6+p*90)+"%";
+    if (fr % (step*5) === 0) status.textContent=`Tracking pose… ${Math.round(p*100)}%`;
+  }
+  if (!perFrame.length){
+    prog.style.display="none";
+    toast("No golfer detected — check framing/lighting, or track manually.");
+    return;
+  }
+  bar.style.width="98%"; status.textContent="Calibrating & tagging P positions…";
+  applyPoseResults(perFrame);
+  prog.style.display="none";
+  if (wasPlaying) {} // leave paused for review
+  toast(`AI tracked ${perFrame.length} frames — step through and drag any dot to correct.`);
+}
+
+/* Pure: pixel landmarks -> dig.frames + dig.cal + P tags. */
+function applyPoseResults(perFrame){
+  const W=$("digVideo").videoWidth, H=$("digVideo").videoHeight;
+  const heightIn=parseFloat($("digHeight").value)||71;
+  const px=(lm,i)=>[lm[i].x*W, lm[i].y*H];
+  const vis=(lm,i)=>lm[i] && (lm[i].visibility==null || lm[i].visibility>0.4);
+
+  // calibration from first frame with full lower-body + face visibility
+  let cal=null;
+  for (const {lm} of perFrame){
+    if ([LM.NOSE,LM.L_ANK,LM.R_ANK,LM.L_HIP,LM.R_HIP].every(i=>vis(lm,i))){
+      const noseY=px(lm,LM.NOSE)[1];
+      const ankY=(px(lm,LM.L_ANK)[1]+px(lm,LM.R_ANK)[1])/2;
+      const pxPerIn=(ankY-noseY)/(NOSE_TO_ANKLE*heightIn);
+      if (pxPerIn>0){
+        cal={ pxPerIn, groundY: ankY + 0.039*heightIn*pxPerIn,
+              centerX: (px(lm,LM.L_HIP)[0]+px(lm,LM.R_HIP)[0])/2 };
+        break;
+      }
+    }
+  }
+  if (cal){ dig.cal=cal; dig.calStep=-1;
+    $("calReadout").textContent=`${cal.pxPerIn.toFixed(2)} px/in (AI)`; renderCalSteps(); }
+
+  // fill frames (all points flagged AI until corrected)
+  dig.frames.clear(); dig.clicks=[];
+  for (const {t,lm} of perFrame){
+    if (!(vis(lm,LM.L_WR)&&vis(lm,LM.R_WR))) continue;
+    const tMs=Math.round(t*1000);
+    const pts={}, ai=new Set();
+    const wl=px(lm,LM.L_WR), wr=px(lm,LM.R_WR);
+    pts.h=[(wl[0]+wr[0])/2,(wl[1]+wr[1])/2]; ai.add("h");
+    if (vis(lm,LM.L_HIP)){ pts.hip=px(lm,LM.L_HIP); ai.add("hip"); }
+    if (vis(lm,LM.L_SH)){ pts.sh=px(lm,LM.L_SH); ai.add("sh"); }
+    if (vis(lm,LM.NOSE)){ pts.head=px(lm,LM.NOSE); ai.add("head"); }
+    dig.frames.set(tMs,{pts,p:0,ai});
+  }
+  autoPtagFrames();
+  buildPNav(); renderFrames(); redrawOverlay();
+}
+
+/* Heuristic P1–P10 from the hand-height trace (ported from track_swing.py). */
+function autoPtagFrames(){
+  if (!dig.cal) return;
+  const times=[...dig.frames.keys()].sort((a,b)=>a-b).filter(t=>dig.frames.get(t).pts.h);
+  const n=times.length; if (n<6) return;
+  const hy=times.map(t=>(dig.cal.groundY - dig.frames.get(t).pts.h[1])/dig.cal.pxPerIn);
+  const hipY=times.map(t=>{const p=dig.frames.get(t).pts.hip; return p?(dig.cal.groundY-p[1])/dig.cal.pxPerIn:null;});
+  const shY =times.map(t=>{const p=dig.frames.get(t).pts.sh;  return p?(dig.cal.groundY-p[1])/dig.cal.pxPerIn:null;});
+  const med=a=>{const v=a.filter(x=>x!=null).sort((x,y)=>x-y); return v.length?v[Math.floor(v.length/2)]:null;};
+  const hipLvl=med(hipY) ?? (Math.min(...hy)+6), shLvl=med(shY) ?? (Math.max(...hy)-10);
+
+  const lim=Math.max(3,Math.floor(n*0.75));
+  let p4=0; for(let i=1;i<lim;i++) if(hy[i]>hy[p4]) p4=i;         // top = highest hands (first 75%)
+  const after=Math.min(n-1, p4+Math.max(3, Math.round(n*0.35)));
+  let p7=p4+1; for(let i=p4+1;i<=after;i++) if(hy[i]<hy[p7]) p7=i;  // impact = lowest hands after top
+  const cross=(i0,i1,level,rising)=>{ const st=i1>=i0?1:-1;
+    for(let i=i0;i!==i1;i+=st){ if(hy[i]==null) continue; if(rising&&hy[i]>=level) return i; if(!rising&&hy[i]<=level) return i; } return null; };
+  const tag={}; tag[0]=1; tag[p4]=4; tag[p7]=7;
+  const set=(idx,p)=>{ if(idx!=null && tag[idx]==null) tag[idx]=p; };
+  set(cross(0,p4,hipLvl+2,true),2);
+  set(cross(0,p4,shLvl-4,true),3);
+  set(cross(p4,p7,shLvl-4,false),5);
+  set(cross(p4,p7,hipLvl+2,false),6);
+  set(cross(p7,n-1,hipLvl+2,true),8);
+  set(cross(p7,n-1,shLvl-4,true),9);
+  set(n-1,10);
+  for (const [t,i] of times.map((t,i)=>[t,i])) dig.frames.get(t).p = tag[i]||0;
+}
+
+/* P-position navigation buttons */
+function buildPNav(){
+  const wrap=$("pNav"); wrap.textContent="";
+  for (let p=1;p<=10;p++){
+    const b=document.createElement("button");
+    b.textContent="P"+p; b.style.padding="2px 6px"; b.title=PHASES[p-1][1];
+    const t=[...dig.frames.keys()].find(t=>dig.frames.get(t).p===p);
+    if (t==null){ b.classList.add("ghosted"); b.disabled=true; }
+    else b.addEventListener("click",()=>{ if(dig.kind==="video") $("digVideo").currentTime=t/1000; });
+    wrap.appendChild(b);
+  }
+}
+
+$("btnAutoTrack").addEventListener("click",runAutoTrack);
+
+/* =================================================================
+   EDITABLE PROJECT — export video + tracked points, re-import to edit
+   ================================================================= */
+function blobToDataURL(blob){ return new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(blob); }); }
+function framesToJSON(){
+  return [...dig.frames.entries()].sort((a,b)=>a[0]-b[0]).map(([tMs,fr])=>({
+    tMs, p:fr.p||0, pts:fr.pts, ai: fr.ai?[...fr.ai]:[] }));
+}
+async function exportProject(){
+  if (!dig.frames.size){ toast("Nothing to export — track some points first"); return; }
+  const name=($("digName").value.trim()||"handpath-project");
+  const proj={
+    app:"handpath-lab-project", version:1,
+    meta:{ name, club:$("digClub").value, view:$("digView").value, dir:parseInt($("digDir").value,10), height:parseFloat($("digHeight").value)||71 },
+    cal: dig.cal, vidW:$("digVideo").videoWidth||null, vidH:$("digVideo").videoHeight||null,
+    fps: parseFloat($("digFps").value)||30,
+    frames: framesToJSON(),
+    video: dig.videoFile ? await blobToDataURL(dig.videoFile) : null,
+  };
+  const blob=new Blob([JSON.stringify(proj)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=name.replace(/[^\w.-]+/g,"_")+".handpath.json"; a.click(); URL.revokeObjectURL(a.href);
+  toast(proj.video?"Project exported (with video)":"Project exported (no video — path only)");
+}
+async function importProject(file){
+  let proj; try{ proj=JSON.parse(await file.text()); }catch(e){ toast("Bad project file"); return; }
+  if (proj.app!=="handpath-lab-project"){ toast("Not a Handpath project file"); return; }
+  // restore meta
+  $("digName").value=proj.meta.name||""; $("digClub").value=proj.meta.club||"7-iron";
+  $("digView").value=proj.meta.view||"face"; $("digDir").value=String(proj.meta.dir||1);
+  $("digHeight").value=proj.meta.height||71; if(proj.fps) $("digFps").value=proj.fps;
+  const finish=()=>{
+    dig.cal=proj.cal||null;
+    if (dig.cal){ dig.calStep=-1; $("calReadout").textContent=`${dig.cal.pxPerIn.toFixed(2)} px/in`; renderCalSteps(); }
+    dig.frames.clear(); dig.clicks=[];
+    for (const f of proj.frames||[]) dig.frames.set(f.tMs,{pts:f.pts,p:f.p||0,ai:new Set(f.ai||[])});
+    buildPNav(); renderFrames(); redrawOverlay();
+    toast(`Project "${proj.meta.name}" loaded — edit and re-save`);
+  };
+  if (proj.video){
+    const blob=await (await fetch(proj.video)).blob();
+    dig.videoFile=blob; dig.kind="video";
+    const v=$("digVideo"); v.src=URL.createObjectURL(blob); v.hidden=false;
+    $("digImage").hidden=true; $("digEmpty").hidden=true; $("digMedia").removeAttribute("hidden"); dig.media=v;
+    v.addEventListener("loadedmetadata",()=>{ setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000); finish(); },{once:true});
+  } else finish();
+}
+$("btnExportProject").addEventListener("click",()=>exportProject().catch(e=>toast("Export failed")));
+$("btnImportProject").addEventListener("click",()=>$("projectFile").click());
+$("projectFile").addEventListener("change",e=>{ const f=e.target.files[0]; if(f){ setMode("dig"); importProject(f); } e.target.value=""; });
 
 /* ---------- mode switching ---------- */
 function setMode(m){

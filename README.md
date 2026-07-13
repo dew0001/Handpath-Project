@@ -33,14 +33,27 @@ opening `index.html` in any browser.
 
 ## Digitize mode (capture real swings)
 
-Load a video (or screenshot sequence), calibrate from the golfer's height in
-three clicks, then step frames and click **hands / clubhead / lead hip /
-lead shoulder / head** per frame — each tracked point is labeled on the frame.
-**Drag any existing dot to fix its position**, or delete individual points /
-whole frames from the captured-frames list. Tag P positions as you go. Saved
-captures appear in Study mode, and the **source video is stored with the swing
-(IndexedDB) so Study mode overlays your traced path directly on the footage**,
-scrubber-synced — toggle it with "Video overlay" in the Display panel.
+Load a face-on or down-the-line video, then hit **✨ Auto-track (AI)**: MediaPipe
+Pose runs *in your browser*, auto-calibrates from the golfer's height, tracks
+hands / lead hip / lead shoulder / head across the swing, and heuristically tags
+**P1–P10**. (No install — the model streams from a CDN on first use; needs an
+internet connection. Offline or batch work → use the Python pipeline below.)
+
+Then **correct what the AI got wrong**: step frame-by-frame or **jump to any P
+position**, and **drag any dot to fix it** — AI-placed points show a dashed ring
+until you touch them, so you can see exactly what's machine-guessed vs.
+hand-corrected. Delete individual points or whole frames, add the clubhead
+manually (pose models don't see the club), and re-tag P positions. Full manual
+tracking (3-click calibrate + click each point) is always available too.
+
+**The video is stored with the swing** (IndexedDB), so Study mode overlays your
+traced path directly on the footage, scrubber-synced — toggle "Video overlay" in
+the Display panel.
+
+**Export project** bundles the video + all tracked points + calibration into one
+`.handpath.json` file. **Import project** re-opens it later (or on another
+machine) to keep editing — nothing is lost. Saved library swings can also be
+exported this way via the ⤓ button.
 
 ## AI pipeline (automated digitizing)
 
