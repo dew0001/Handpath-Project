@@ -381,7 +381,7 @@ footer.app a{color:var(--accent)}
         </select>
         <span class="phasechip" id="phaseChip">P1 · Address</span>
         <span class="hint" id="phaseDesc" style="flex:1;min-width:0"></span>
-        <span class="mono hint" id="tReadout" style="min-width:60px;text-align:right">0.00 s</span>
+        <span class="mono hint" id="tReadout" style="min-width:100px;text-align:right">0.00 s</span>
       </div>
       <div class="scrubstack">
         <div class="ptrack" id="ptrack"></div>
@@ -517,7 +517,7 @@ footer.app a{color:var(--accent)}
         <button id="fPrev5">−5f</button><button id="fPrev">−1f</button>
         <button id="fNext">+1f</button><button id="fNext5">+5f</button>
         <input type="range" id="digScrub" min="0" max="1000" value="0" step="1" aria-label="Video position">
-        <span class="mono hint" id="digTime" style="min-width:78px;text-align:right">0.000 s</span>
+        <span class="mono hint" id="digTime" style="min-width:118px;text-align:right">0.000 s</span>
         <div class="sep" style="width:1px;height:20px;background:var(--line)"></div>
         <button id="btnZoomOut" title="Zoom out">−</button>
         <button id="btnZoomIn" title="Zoom in">＋</button>
@@ -1119,7 +1119,10 @@ function updateDynamic(){
   $("mDepth").textContent = S.hz&&S.hz[i]!=null ? fmt(S.hz[i]) : "—";
   $("mHandSpd").textContent = S.handSpd[i]!=null ? fmt(S.handSpd[i]*IN_S_TO_MPH,1)+" mph" : "—";
   $("mClubSpd").textContent = S.clubSpd ? fmt(S.clubSpd[i]*IN_S_TO_MPH,1)+" mph" : "—";
-  $("tReadout").textContent = fmt(S.t[i],2)+" s";
+  const swFps=comp.sw.fps||30;
+  const tEx=S.t[0]+study.pos*(S.t[DENSE-1]-S.t[0]);        // exact scrub time (readout matches the video seek)
+  const vidT=(comp.sw.cal&&comp.sw.cal.vidT0||0)+tEx;      // frame # in the source video, matches Digitize
+  $("tReadout").textContent = fmt(tEx,2)+" s · f"+Math.round(vidT*swFps);
   const ph = S.phase ? S.phase[i] : null;
   if (ph!=null){
     const pi = Math.max(1,Math.min(10,Math.floor(ph+1e-6)));
@@ -1262,7 +1265,7 @@ async function exportSavedProject(s){
   });
   const proj={ app:"handpath-lab-project", version:1,
     meta:{ name:s.name, club:s.club, view:s.view, dir:dir||1, height:s.height||71 },
-    cal:{ pxPerIn, groundY, centerX }, vidW, vidH, frames, video:null };
+    cal:{ pxPerIn, groundY, centerX }, vidW, vidH, fps:s.fps||30, frames, video:null };
   if (s.hasVideo){
     const blob=await idbVideo("get", s.id);
     if (blob) proj.video=await blobToDataURL(blob);
@@ -1321,7 +1324,13 @@ document.addEventListener("keydown",(e)=>{
     if (e.key===" "){ e.preventDefault(); study.playing?stopPlay():startPlay(); }
     if (e.key==="ArrowRight"||e.key==="ArrowLeft"){
       e.preventDefault(); stopPlay();
-      const d=(e.key==="ArrowRight"?1:-1)*(e.shiftKey?0.02:0.004);
+      const comp=compiled(study.primary);
+      let d=(e.key==="ArrowRight"?1:-1)*(e.shiftKey?0.02:0.004);
+      if (comp){   // step by real video frames at the swing's captured fps
+        const dur=comp.S.t[DENSE-1]-comp.S.t[0];
+        const fps=comp.sw.fps||30;
+        if (dur>0) d=(e.key==="ArrowRight"?1:-1)*(e.shiftKey?5:1)/fps/dur;
+      }
       study.pos=Math.max(0,Math.min(1,study.pos+d)); updateDynamic();
     }
   } else {
@@ -1396,7 +1405,8 @@ async function projectToPlayer(j){
   });
   const id="d"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);
   const player={ id, name: meta.name||"Imported project", club: meta.club||"Other",
-    view: meta.view==="dtl"?"dtl":"face", source:"project import", height: meta.height||71, anchors };
+    view: meta.view==="dtl"?"dtl":"face", source:"project import", height: meta.height||71,
+    fps: j.fps||30, anchors };
   if (j.video && j.vidW && j.vidH){
     player.cal={ pxPerIn, groundY, centerX, dir, vidW:j.vidW, vidH:j.vidH, vidT0:t0/1000 };
     try{
@@ -1606,8 +1616,9 @@ $("fPrev5").addEventListener("click",()=>digStep(-5));
 $("fNext5").addEventListener("click",()=>digStep(5));
 $("digScrub").addEventListener("input",e=>{ if (dig.kind==="video") $("digVideo").currentTime=e.target.value/1000; });
 $("digVideo").addEventListener("timeupdate",()=>{
-  $("digTime").textContent=($("digVideo").currentTime).toFixed(3)+" s";
-  $("digScrub").value=Math.round($("digVideo").currentTime*1000);
+  const t=$("digVideo").currentTime, fps=parseFloat($("digFps").value)||30;
+  $("digTime").textContent=t.toFixed(3)+" s · f"+Math.round(t*fps);
+  $("digScrub").value=Math.round(t*1000);
   redrawOverlay(); renderFrames();
 });
 
@@ -1848,6 +1859,7 @@ $("btnSavePlayer").addEventListener("click",()=>{
     name, club:$("digClub").value, view,
     source: [...dig.frames.values()].some(f=>f.ai&&f.ai.size) ? "auto-track (AI)" : "manual digitize",
     height:parseFloat($("digHeight").value)||71,
+    fps: parseFloat($("digFps").value)||30,
     anchors,
   };
   // store calibration + video so Study mode can overlay the path on the footage
