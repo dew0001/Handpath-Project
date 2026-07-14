@@ -1902,7 +1902,8 @@ async function loadPoseLandmarker(){
     const mod = await import(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${V}/vision_bundle.mjs`);
     const fileset = await mod.FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${V}/wasm`);
     _poseLandmarker = await mod.PoseLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task" },
+      // "full" tracks fast/blurred downswing frames far better than "lite" (worth the slower load)
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task" },
       runningMode: "VIDEO", numPoses: 1,
     });
     return _poseLandmarker;
