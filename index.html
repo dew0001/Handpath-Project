@@ -192,7 +192,7 @@ table.datatable th{color:var(--muted);font-weight:600}
 .dig-toolbar .lbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
 .dig-stage{position:relative;background:var(--stage);border:1px solid var(--line);border-radius:10px;
   flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden}
-#digMedia{position:relative;transform-origin:0 0;will-change:transform;line-height:0}
+#digMedia{position:relative;transform-origin:0 0;line-height:0}   /* no will-change: layer would be rasterized at 1x and stretched blurry when zoomed */
 #digMedia video,#digMedia img{display:block;width:100%;height:100%;border-radius:6px}
 #digMedia svg.overlay{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
 #digStage.panning #digMedia svg.overlay{cursor:grab}
@@ -1798,6 +1798,14 @@ function redrawOverlay(){
           fill:kp.color,stroke:"var(--stage)","stroke-width":r*0.4,"paint-order":"stroke"},ov);
         tx.textContent=kp.abbr;
       }
+    }
+    // tagged frames wear their P number at the hands dot (visible on every frame)
+    if (fr.p && fr.pts.h){
+      const [hx0,hy0]=fr.pts.h;
+      const tp=el("text",{x:hx0-r*1.4,y:hy0-r*1.2,"font-size":r*1.9,"font-family":"sans-serif","font-weight":"700",
+        "text-anchor":"end",fill:"var(--c-down)",stroke:"var(--stage)","stroke-width":r*0.45,"paint-order":"stroke",
+        opacity:isCur?1:.8},ov);
+      tp.textContent="P"+fr.p;
     }
   }
 }
