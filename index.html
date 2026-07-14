@@ -84,6 +84,9 @@ nav.modes button[aria-pressed="true"]{background:var(--accent);color:var(--accen
 
 main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16px 20px;max-width:1480px;margin:0 auto}
 @media (max-width:900px){ main{grid-template-columns:1fr} }
+/* compare mode: give the whole width to the videos; the rail reflows below as cards */
+main.cmpwide{grid-template-columns:minmax(0,1fr);max-width:none}
+main.cmpwide .rail{order:2;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;align-items:start}
 .rail{display:flex;flex-direction:column;gap:12px;min-width:0}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px}
 .panel h3{margin:0 0 8px;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
@@ -115,7 +118,7 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 .cmp-duo{display:flex;flex-direction:row;gap:10px;align-items:flex-start}
 .cmp-half{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:6px}
 .cmp-half .cmp-stage{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:4px;position:relative}
-.cmp-half svg{display:block;width:100%;height:auto}
+.cmp-half svg{display:block;width:100%;height:auto;max-height:calc(100dvh - 230px)}
 @media (max-width:700px){ .cmp-duo{flex-direction:column} }
 .cmp-head{font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px;min-width:0}
 .cmp-head .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -125,7 +128,7 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 /* each comparison window is drag-resizable (handle at bottom-right); the slider sets the default */
 .cmp-panel{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;overflow:hidden;
   width:var(--cmp-w,440px);min-width:240px;max-width:96vw;resize:horizontal}
-.cmp-panel svg{display:block;width:100%;height:auto}
+.cmp-panel svg{display:block;width:100%;height:auto;max-height:calc(100dvh - 230px)}
 .cmp-panel::after{content:"⤡";position:absolute;right:3px;bottom:1px;font-size:11px;color:var(--muted);pointer-events:none;opacity:.6}
 .cmp-scrub{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;flex-wrap:wrap}
 .cmp-scrub input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
@@ -2222,10 +2225,11 @@ function videoScreenBox(rec, view, xf){
 function unionBox(a,b){ if(!a)return b; if(!b)return a;
   return {minx:Math.min(a.minx,b.minx),miny:Math.min(a.miny,b.miny),maxx:Math.max(a.maxx,b.maxx),maxy:Math.max(a.maxy,b.maxy)}; }
 function fitBox(bb, T, mf){
+  // frame the content at its own aspect (the svg's height follows the viewBox,
+  // so a portrait video fills its panel's width instead of being letterboxed)
   mf = mf==null?0.15:mf;
   const mx=(bb.maxx-bb.minx)*mf+18, my=(bb.maxy-bb.miny)*mf+18;
-  let x=bb.minx-mx, y=bb.miny-my, w=(bb.maxx-bb.minx)+2*mx, h=(bb.maxy-bb.miny)+2*my;
-  const ar=T.w/T.h; if (w/h<ar){ const nw=h*ar; x-=(nw-w)/2; w=nw; } else { const nh=w/ar; y-=(nh-h)/2; h=nh; }
+  const x=bb.minx-mx, y=bb.miny-my, w=(bb.maxx-bb.minx)+2*mx, h=(bb.maxy-bb.miny)+2*my;
   return `${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`;
 }
 // the region to frame: whole video when shown (so it's not cropped), else the swing path
@@ -2400,6 +2404,7 @@ function setCompare(on){
   cmp.on=on;
   $("compareSel").disabled=!on; $("tglGhost").disabled=!on;
   $("stages").hidden=on; $("soloTransport").hidden=on; $("compareWrap").hidden=!on;
+  $("studyMain").classList.toggle("cmpwide", on);   // videos get the full page width
   updateCmpSizeVis();
   if (on){ stopPlay(); refreshCompareSel(); $("resizeControls").hidden=!cmp.B; $("ghostOpacity").hidden=!cmp.ghost; renderCompare(); }
   else { $("resizeControls").hidden=true; $("ghostOpacity").hidden=true; rebuildStages(); }
