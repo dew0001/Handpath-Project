@@ -547,7 +547,7 @@ footer.app a{color:var(--accent)}
     <input type="file" id="pguideFile" accept="image/*" hidden>
     <img id="pguideImg" alt="P-position reference" hidden style="width:100%;border-radius:8px;display:block">
     <div id="pguideGrid" class="pguide-grid"></div>
-    <p class="hint" style="margin:10px 0 0">Schematic, face-on with the target to the right. Match your golfer to these to place P tags — jump to the frame that matches each and tag it. Prefer a photo reference? <b>Use my image</b> to load your own (saved in this browser).</p>
+    <p class="hint" style="margin:10px 0 0">Match your golfer to each position to place P tags — jump to the frame that matches and tag it. <b>Use my image</b> swaps in your own reference (saved in this browser); <b>Show schematics</b> shows the built-in stick figures.</p>
   </div>
 </div>
 
@@ -2065,9 +2065,10 @@ function showPGuideImage(dataURL){
   if (dataURL){ img.src=dataURL; img.hidden=false; $("pguideGrid").hidden=true; $("pguideUseSchem").hidden=false; }
   else { img.hidden=true; $("pguideGrid").hidden=false; $("pguideUseSchem").hidden=true; }
 }
+const PGUIDE_DEFAULT="pguide.jpg";   // bundled reference photo (thediygolfer.com montage)
 function openPGuide(){
   buildPGuide();
-  showPGuideImage(localStorage.getItem(PGUIDE_IMG_KEY)||null);
+  showPGuideImage(localStorage.getItem(PGUIDE_IMG_KEY)||PGUIDE_DEFAULT);
   $("pguideModal").removeAttribute("hidden");
 }
 function closePGuide(){ $("pguideModal").setAttribute("hidden",""); }
