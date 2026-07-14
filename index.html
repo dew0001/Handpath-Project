@@ -1564,11 +1564,16 @@ $("btnPan").addEventListener("click",()=>{
   $("digStage").classList.toggle("panning",panMode);
 });
 
-/* estimate the source frame rate from decoded-frame timestamps; snaps to common rates.
-   Silent fallback — the fps field stays user-editable either way. */
+/* estimate the EFFECTIVE frame rate: time between visually-new pictures, not decoded
+   frames — a 30fps clip in a 60fps container (phone exports do this) must read 30.
+   Probes ~mid-video where there's motion. Silent fallback; the field stays editable. */
 function detectFps(v){
   if (!v.requestVideoFrameCallback) return;
-  const deltas=[]; let last=null, done=false;
+  const cv=document.createElement("canvas"); cv.width=96; cv.height=160;
+  const cx=cv.getContext("2d",{willReadFrequently:true});
+  const hash=()=>{ try{ cx.drawImage(v,0,0,96,160); const d=cx.getImageData(0,0,96,160).data;
+      let h=0; for(let i=0;i<d.length;i+=193) h=(h*31+d[i])>>>0; return h; }catch(_){ return null; } };
+  const deltas=[]; let lastT=null, lastH=null, done=false;
   const finish=()=>{
     if (done) return; done=true;
     try{ v.pause(); v.currentTime=0; }catch(_){}
@@ -1578,22 +1583,29 @@ function detectFps(v){
       if (med>0){
         const raw=1/med, common=[24,25,30,50,60,120,240];
         let best=common[0]; for(const c of common) if(Math.abs(c-raw)<Math.abs(best-raw)) best=c;
-        if (Math.abs(best-raw)/best<=0.15 && +$("digFps").value!==best){
-          $("digFps").value=best; toast(`Frame rate detected: ${best} fps`);
+        if (Math.abs(best-raw)/best<=0.2 && +$("digFps").value!==best){
+          $("digFps").value=best; toast(`Frame rate detected: ${best} fps (effective)`);
         }
       }
     }
   };
   const tick=(_,meta)=>{
     if (done) return;
-    if (last!=null && meta.mediaTime>last) deltas.push(meta.mediaTime-last);
-    last=meta.mediaTime;
-    if (deltas.length>=12) finish(); else v.requestVideoFrameCallback(tick);
+    const h=hash();
+    if (h!=null){
+      if (lastH==null){ lastH=h; lastT=meta.mediaTime; }
+      else if (h!==lastH){                    // only count frames that actually changed the picture
+        if (meta.mediaTime>lastT) deltas.push(meta.mediaTime-lastT);
+        lastH=h; lastT=meta.mediaTime;
+      }
+    }
+    if (deltas.length>=10) finish(); else v.requestVideoFrameCallback(tick);
   };
   v.muted=true;
+  try{ v.currentTime=Math.max(0, Math.min((v.duration||2)*0.4, (v.duration||2)-1.2)); }catch(_){}
   const p=v.play(); if (p&&p.catch) p.catch(()=>{});
   v.requestVideoFrameCallback(tick);
-  setTimeout(finish, 1500);
+  setTimeout(finish, 2500);
 }
 
 /* frame nav */
