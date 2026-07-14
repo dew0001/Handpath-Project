@@ -147,10 +147,12 @@ main.cmpwide .rail{order:2;display:grid;grid-template-columns:repeat(auto-fill,m
 .transport .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .scrubstack{position:relative}
 .scrubstack input[type=range]{width:100%;display:block;accent-color:var(--accent)}
-.ptrack{position:relative;height:18px}
+.ptrack{position:relative;height:31px}
 /* ticks are inset by the range thumb radius (~7px) so they line up with the slider travel */
-.ptrack .tick{position:absolute;top:6px;width:1.5px;height:8px;background:var(--muted);opacity:.75;transform:translateX(-50%)}
-.ptrack .ticklabel{position:absolute;top:-1px;transform:translateX(-50%);font-size:10px;color:var(--muted);cursor:pointer;user-select:none;font-variant-numeric:tabular-nums}
+.ptrack .tick{position:absolute;top:24px;width:1.5px;height:7px;background:var(--muted);opacity:.75;transform:translateX(-50%)}
+/* labels stagger across two rows so clustered Ps stay readable */
+.ptrack .ticklabel{position:absolute;top:0;transform:translateX(-50%);font-size:10px;color:var(--muted);cursor:pointer;user-select:none;font-variant-numeric:tabular-nums}
+.ptrack .ticklabel.row2{top:12px}
 .ptrack .ticklabel:hover{color:var(--ink)}
 .readout{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
 .readout b{font-weight:700}
@@ -906,7 +908,8 @@ function renderSwingInto(svg, view, comp, opts){
       const ax = view==="face" ? a.h[0] : (a.h[2]!=null ? a.h[2] : (capView==="dtl" ? a.h[0] : null));
       if (ax==null) continue;
       el("circle",{cx:toX(ax),cy:toY(a.h[1]),r:2.6*mk,fill:"var(--stage)",stroke:"var(--muted)","stroke-width":1.2*mk},g);
-      const t = el("text",{x:toX(ax)+5*mk,y:toY(a.h[1])-5*mk,"font-size":9*mk,fill:"var(--muted)"},g);
+      const t = el("text",{x:toX(ax)+4*mk,y:toY(a.h[1])-9*mk,"font-size":9*mk,"font-weight":"600",fill:"var(--ink)",
+        stroke:"var(--stage)","stroke-width":2.6*mk,"paint-order":"stroke"},g);
       t.textContent="P"+a.p;
     }
   }
@@ -1149,15 +1152,16 @@ function buildPTrack(){
   const t0=S.t[0], t1=S.t[DENSE-1];
   if (t1<=t0) return;
   const seen=new Set();
+  let li=0;
   for (const a of comp.sw.anchors){                     // exact tagged frames, no resample drift
     if (!a.p || seen.has(a.p)) continue; seen.add(a.p);
     const frac = (a.t-t0)/(t1-t0);
     const pos = `calc(7px + ${frac} * (100% - 14px))`;   // inset by thumb radius to match slider travel
     const tick = document.createElement("span"); tick.className="tick"; tick.style.left=pos; tr.appendChild(tick);
-    const lb = document.createElement("span"); lb.className="ticklabel mono"; lb.style.left=pos;
+    const lb = document.createElement("span"); lb.className="ticklabel mono"+(li%2?" row2":""); lb.style.left=pos;
     lb.textContent="P"+a.p; lb.title=PHASES[a.p-1][1];
     lb.addEventListener("click",()=>{ study.pos=frac; stopPlay(); updateDynamic(); });
-    tr.appendChild(lb);
+    tr.appendChild(lb); li++;
   }
 }
 
@@ -1721,7 +1725,11 @@ $("digOverlay").addEventListener("dblclick",(e)=>{
 function applyTag(fr, val){
   if (!fr || !val) return;
   if (val==="ref"){ fr.ref=true; fr.p=0; }
-  else { fr.p=parseInt(val,10); fr.ref=false; }
+  else {
+    const p=parseInt(val,10);
+    for (const f of dig.frames.values()) if (f.p===p) f.p=0;   // a P tag lives on exactly one frame
+    fr.p=p; fr.ref=false;
+  }
 }
 $("digPhase").addEventListener("change",()=>{
   if (dig.kind!=="video") return;
@@ -1833,7 +1841,8 @@ $("btnSavePlayer").addEventListener("click",()=>{
       if (fr.pts[src]){ a[dst]=toWorld(fr.pts[src]); }
     return a;
   });
-  const id="d"+Date.now().toString(36);
+  const existing=savedPlayers.find(s=>s.name===name);   // same name = update, don't duplicate
+  const id = existing ? existing.id : "d"+Date.now().toString(36);
   const player={
     id,
     name, club:$("digClub").value, view,
@@ -1849,11 +1858,18 @@ $("btnSavePlayer").addEventListener("click",()=>{
     idbVideo("put", id, dig.videoFile).then(ok=>{
       if(!ok){ player.hasVideo=false; persistSaved(savedPlayers); toast("Saved (video too large to store — path kept)"); }
     });
+  } else if (existing && existing.hasVideo){
+    idbVideo("del", id);   // replaced by a capture without video
   }
-  savedPlayers.push(player); persistSaved(savedPlayers);
+  if (existing) savedPlayers[savedPlayers.indexOf(existing)]=player;
+  else savedPlayers.push(player);
+  persistSaved(savedPlayers);
+  study.compiled.delete(id);                            // recompile with the fresh anchors
+  if (studyVid && studyVid.id===id) teardownStudyVideo();
+  for (const s of ["A","B"]){ const r=cmp.vids[s]; if (r&&r.id===id){ if(r.url)URL.revokeObjectURL(r.url); cmp.vids[s]=null; } }
   study.primary=player.id;
   refreshSelectors(); rebuildStages();
-  toast(`Saved "${name}"${player.hasVideo?" with video":""} — open Study mode`);
+  toast(`${existing?"Updated":"Saved"} "${name}"${player.hasVideo?" with video":""} — open Study mode`);
 });
 
 /* =================================================================
@@ -2008,7 +2024,7 @@ function buildPNav(){
   for (let p=1;p<=10;p++){
     const b=document.createElement("button");
     b.textContent="P"+p; b.style.padding="2px 6px"; b.title=PHASES[p-1][1];
-    const t=[...dig.frames.keys()].find(t=>dig.frames.get(t).p===p);
+    const t=[...dig.frames.keys()].sort((a,b)=>a-b).find(t=>dig.frames.get(t).p===p);
     if (t==null){ b.classList.add("ghosted"); b.disabled=true; }
     else b.addEventListener("click",()=>{ if(dig.kind==="video") $("digVideo").currentTime=t/1000; });
     wrap.appendChild(b);
