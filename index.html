@@ -222,6 +222,17 @@ table.datatable th{color:var(--muted);font-weight:600}
 .modal-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:940px;width:100%;max-height:90vh;overflow:auto;padding:16px 18px;box-shadow:0 12px 48px rgba(0,0,0,.35)}
 .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .modal-head b{font-size:15px}
+/* P-guide: fill the screen, fit imagery with no page scroll, zoom inside */
+.pguide-card{max-width:min(1280px,96vw);width:96vw;height:92vh;max-height:92vh;display:flex;flex-direction:column;overflow:hidden}
+.pguide-tabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
+#pguideTabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
+.pguide-view{flex:1 1 auto;min-height:0;position:relative;overflow:hidden;background:var(--panel2);border:1px solid var(--line);border-radius:8px;touch-action:none}
+.pguide-view.pannable{cursor:grab}
+.pguide-view.pannable.grabbing{cursor:grabbing}
+.pguide-zoomwrap{position:absolute;inset:0;transform-origin:0 0}
+.pguide-face{width:100%;height:100%;object-fit:contain;display:block}
+.pguide-dtl{display:flex;gap:8px;width:100%;height:100%;align-items:center;justify-content:center}
+.pguide-dtl img{height:100%;width:auto;max-width:calc(50% - 4px);object-fit:contain;display:block}
 .notice{font-size:12px;color:var(--muted);border-left:3px solid var(--c-down);padding:4px 10px;background:var(--panel2);border-radius:0 6px 6px 0}
 footer.app{padding:14px 20px 26px;max-width:1480px;margin:0 auto;color:var(--muted);font-size:12px}
 footer.app a{color:var(--accent)}
@@ -539,12 +550,32 @@ footer.app a{color:var(--accent)}
 <div class="toast" id="toast" role="status"></div>
 
 <div id="pguideModal" class="modal" hidden>
-  <div class="modal-card">
+  <div class="modal-card pguide-card">
     <div class="modal-head">
-      <b>The 10 P positions — reference</b>
-      <button id="pguideClose" title="Close">✕</button>
+      <div class="row" style="gap:10px">
+        <b>P-position reference</b>
+        <div class="kbtns" id="pguideTabs">
+          <button data-tab="face" aria-pressed="true">P-Guide Face-on</button>
+          <button data-tab="dtl" aria-pressed="false">P-Guide DTL</button>
+        </div>
+      </div>
+      <div class="row" style="gap:6px">
+        <button id="pguideZoomOut" title="Zoom out">−</button>
+        <button id="pguideZoomIn" title="Zoom in">＋</button>
+        <button id="pguideZoomFit" title="Fit to screen">Fit</button>
+        <button id="pguideClose" title="Close">✕</button>
+      </div>
     </div>
-    <img id="pguideImg" src="pguide.jpg" alt="P-position reference" style="width:100%;border-radius:8px;display:block">
+    <div class="pguide-view" id="pguideView">
+      <div class="pguide-zoomwrap" id="pguideZoomwrap">
+        <img class="pguide-face" id="pguideFace" src="pguide.jpg" alt="Face-on P-position reference (P1–P10)">
+        <div class="pguide-dtl" id="pguideDtl" hidden>
+          <img src="pguide-dtl-1.png" alt="Down-the-line P1–P5 reference">
+          <img src="pguide-dtl-2.png" alt="Down-the-line P6–P10 reference">
+        </div>
+      </div>
+    </div>
+    <p class="hint" style="margin:8px 0 0;flex:0 0 auto">Scroll to zoom · drag to pan · <b>Fit</b> resets. Match your golfer to each position, then tag the frame in the digitizer.</p>
   </div>
 </div>
 
@@ -2101,12 +2132,47 @@ function buildPNav(){
 
 $("btnAutoTrack").addEventListener("click",runAutoTrack);
 
-/* ---------- P-position reference guide: just the bundled photo ---------- */
-function openPGuide(){ $("pguideModal").removeAttribute("hidden"); }
+/* ---------- P-position reference guide: Face-on montage + DTL pair, zoomable ---------- */
+const pg = { z:1, tx:0, ty:0 };
+function pgApply(){
+  $("pguideZoomwrap").style.transform = `translate(${pg.tx}px,${pg.ty}px) scale(${pg.z})`;
+  $("pguideView").classList.toggle("pannable", pg.z>1.001);
+}
+function pgFit(){ pg.z=1; pg.tx=0; pg.ty=0; pgApply(); }
+function pgZoomAt(clientX, clientY, factor){
+  const r = $("pguideView").getBoundingClientRect();
+  const nz = Math.max(1, Math.min(8, pg.z*factor));
+  const px = clientX-r.left, py = clientY-r.top;      // keep the point under the cursor fixed
+  pg.tx = px - (px-pg.tx)*(nz/pg.z);
+  pg.ty = py - (py-pg.ty)*(nz/pg.z);
+  pg.z = nz; if (pg.z===1){ pg.tx=0; pg.ty=0; }
+  pgApply();
+}
+function pgSetTab(tab){
+  const face = tab!=="dtl";
+  $("pguideFace").hidden = !face; $("pguideDtl").hidden = face;
+  document.querySelectorAll("#pguideTabs button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.tab===tab)));
+  pgFit();
+}
+function openPGuide(){ $("pguideModal").removeAttribute("hidden"); pgFit(); }
 function closePGuide(){ $("pguideModal").setAttribute("hidden",""); }
 $("btnPGuide").addEventListener("click",openPGuide);
 $("pguideClose").addEventListener("click",closePGuide);
 $("pguideModal").addEventListener("click",(e)=>{ if(e.target===$("pguideModal")) closePGuide(); });
+document.querySelectorAll("#pguideTabs button").forEach(b=>b.addEventListener("click",()=>pgSetTab(b.dataset.tab)));
+$("pguideZoomIn").addEventListener("click",()=>{ const r=$("pguideView").getBoundingClientRect(); pgZoomAt(r.left+r.width/2,r.top+r.height/2,1.3); });
+$("pguideZoomOut").addEventListener("click",()=>{ const r=$("pguideView").getBoundingClientRect(); pgZoomAt(r.left+r.width/2,r.top+r.height/2,1/1.3); });
+$("pguideZoomFit").addEventListener("click",pgFit);
+$("pguideView").addEventListener("wheel",(e)=>{ e.preventDefault(); pgZoomAt(e.clientX,e.clientY, e.deltaY<0?1.15:1/1.15); },{passive:false});
+$("pguideView").addEventListener("pointerdown",(e)=>{
+  if (pg.z<=1.001) return;
+  e.preventDefault(); $("pguideView").classList.add("grabbing");
+  try{ $("pguideView").setPointerCapture(e.pointerId); }catch(_){}
+  const start={x:e.clientX,y:e.clientY,tx:pg.tx,ty:pg.ty};
+  const move=(ev)=>{ pg.tx=start.tx+(ev.clientX-start.x); pg.ty=start.ty+(ev.clientY-start.y); pgApply(); };
+  const up=()=>{ $("pguideView").classList.remove("grabbing"); window.removeEventListener("pointermove",move); window.removeEventListener("pointerup",up); };
+  window.addEventListener("pointermove",move); window.addEventListener("pointerup",up);
+});
 document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && !$("pguideModal").hasAttribute("hidden")) closePGuide(); });
 
 /* =================================================================
