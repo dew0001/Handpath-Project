@@ -179,8 +179,10 @@ table.datatable th{color:var(--muted);font-weight:600}
 
 /* ---------- digitizer (fixed-height, no page scroll) ---------- */
 #digMain.diglayout{height:calc(100dvh - var(--dig-header,64px));max-width:1480px;margin:0 auto;padding:10px 20px;
-  display:grid;grid-template-columns:250px minmax(0,1fr);gap:14px;overflow:hidden}
+  display:grid;grid-template-columns:250px minmax(0,1fr) 235px;gap:14px;overflow:hidden}
 @media (max-width:820px){ #digMain.diglayout{grid-template-columns:1fr;height:auto;overflow:visible} }
+.dig-right{display:flex;flex-direction:column;min-height:0}
+.dig-right .panel.framespanel{flex:1;min-height:0}
 .dig-rail{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;padding-right:4px}
 .dig-rail .panel{padding:10px 12px}
 .dig-rail .panel h3{margin-bottom:6px}
@@ -212,7 +214,7 @@ table.datatable th{color:var(--muted);font-weight:600}
 .framerow .dot{width:9px;height:9px;border-radius:50%;background:var(--line)}
 .framerow .dot.on{background:var(--accent)}
 .frameslist{flex:1;min-height:80px;overflow-y:auto}
-.dig-rail .panel.framespanel{flex:1;min-height:120px;display:flex;flex-direction:column}
+.panel.framespanel{flex:1;min-height:120px;display:flex;flex-direction:column}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s}
 .toast.show{opacity:.95}
 @media (prefers-reduced-motion: reduce){ .toast{transition:none} }
@@ -464,10 +466,6 @@ footer.app a{color:var(--accent)}
       </div>
     </div>
 
-    <div class="panel framespanel">
-      <h3>Captured frames</h3>
-      <div class="frameslist" id="framesList"><p class="hint">No frames yet.</p></div>
-    </div>
   </div>
 
   <div class="dig-work">
@@ -520,6 +518,13 @@ footer.app a{color:var(--accent)}
         <button id="btnPan" title="Pan mode (drag to move the view)" aria-pressed="false">✋ Pan</button>
       </div>
       <p class="hint" style="margin:0">←/→ step frame · keys 1–5 pick point · wheel/±=zoom · space or ✋ to pan · <b>drag a dot to move</b> · <b>click a dot then Delete</b> (or Alt-/double-click) to remove.</p>
+    </div>
+  </div>
+
+  <div class="dig-right">
+    <div class="panel framespanel">
+      <h3>Captured frames</h3>
+      <div class="frameslist" id="framesList"><p class="hint">No frames yet.</p></div>
     </div>
   </div>
 </main>
@@ -1846,10 +1851,11 @@ function renderFrames(){
   const times=[...dig.frames.keys()].sort((a,b)=>a-b);
   if (!times.length){ list.innerHTML='<p class="hint">No frames yet.</p>'; buildPNav(); return; }
   const curT = digCurFrame();
+  let curRow=null;
   for (const t of times){
     const fr=dig.frames.get(t);
     const row=document.createElement("div"); row.className="framerow";
-    if (t===curT) row.style.background="var(--panel2)";
+    if (t===curT){ row.style.background="var(--panel2)"; curRow=row; }
     const tm=document.createElement("button"); tm.className="mono"; tm.style.cssText="min-width:60px;padding:1px 5px;text-align:left";
     tm.textContent=(t/1000).toFixed(3)+"s"; tm.title="Jump to this frame";
     tm.addEventListener("click",()=>{ if (dig.kind==="video"){ $("digVideo").currentTime=t/1000; } });
@@ -1866,6 +1872,11 @@ function renderFrames(){
     const del=document.createElement("button"); del.className="x"; del.textContent="✕"; del.title="Delete whole frame";
     del.addEventListener("click",()=>{ dig.frames.delete(t); renderFrames(); redrawOverlay(); });
     row.append(tm,dots,ptag,del); list.appendChild(row);
+  }
+  // keep the current frame in view while scrubbing (only when it changes, so manual list-scrolling isn't fought)
+  if (curRow && renderFrames._lastCur!==curT){
+    renderFrames._lastCur=curT;
+    curRow.scrollIntoView({block:"nearest"});
   }
   buildPNav();
 }
