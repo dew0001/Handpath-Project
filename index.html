@@ -220,11 +220,6 @@ table.datatable th{color:var(--muted);font-weight:600}
 .modal-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:940px;width:100%;max-height:90vh;overflow:auto;padding:16px 18px;box-shadow:0 12px 48px rgba(0,0,0,.35)}
 .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .modal-head b{font-size:15px}
-.pguide-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-.pguide-cell{border:1px solid var(--line);border-radius:8px;padding:8px 6px;text-align:center;background:var(--panel2)}
-.pguide-cell svg{width:100%;max-height:150px;display:block}
-.pguide-cell .ttl{font-size:12px;font-weight:700;margin-top:4px}
-.pguide-cell .nm{font-size:10.5px;color:var(--muted);line-height:1.3;margin-top:2px}
 .notice{font-size:12px;color:var(--muted);border-left:3px solid var(--c-down);padding:4px 10px;background:var(--panel2);border-radius:0 6px 6px 0}
 footer.app{padding:14px 20px 26px;max-width:1480px;margin:0 auto;color:var(--muted);font-size:12px}
 footer.app a{color:var(--accent)}
@@ -540,16 +535,9 @@ footer.app a{color:var(--accent)}
   <div class="modal-card">
     <div class="modal-head">
       <b>The 10 P positions — reference</b>
-      <div class="row" style="gap:6px">
-        <button id="pguideUpload" title="Use your own reference image (photo montage, etc.)">Use my image…</button>
-        <button id="pguideUseSchem" hidden title="Switch back to the built-in schematics">Show schematics</button>
-        <button id="pguideClose" title="Close">✕</button>
-      </div>
+      <button id="pguideClose" title="Close">✕</button>
     </div>
-    <input type="file" id="pguideFile" accept="image/*" hidden>
-    <img id="pguideImg" alt="P-position reference" hidden style="width:100%;border-radius:8px;display:block">
-    <div id="pguideGrid" class="pguide-grid"></div>
-    <p class="hint" style="margin:10px 0 0">Match your golfer to each position to place P tags — jump to the frame that matches and tag it. <b>Use my image</b> swaps in your own reference (saved in this browser); <b>Show schematics</b> shows the built-in stick figures.</p>
+    <img id="pguideImg" src="pguide.jpg" alt="P-position reference" style="width:100%;border-radius:8px;display:block">
   </div>
 </div>
 
@@ -2053,72 +2041,10 @@ function buildPNav(){
 
 $("btnAutoTrack").addEventListener("click",runAutoTrack);
 
-/* ---------- P-position reference guide (schematic figures) ---------- */
-// [handsX,handsY, clubTipX,clubTipY] in a 100x140 box, target to the right
-const PFIG = [
-  [50,80, 50,132],  // P1 address
-  [37,77,  7,73],   // P2 takeaway (shaft parallel, back)
-  [29,50, 33,13],   // P3 lead arm parallel (club up)
-  [42,24, 76,18],   // P4 top
-  [45,40, 72,16],   // P5 transition
-  [40,74, 10,70],   // P6 delivery (shaft parallel down)
-  [55,80, 55,132],  // P7 impact
-  [66,75, 96,73],   // P8 release (shaft parallel out)
-  [73,48, 78,13],   // P9 follow-through (lead arm parallel)
-  [55,22, 30,18],   // P10 finish (wrapped)
-];
-function drawFig(svg, f){
-  const L=(x1,y1,x2,y2,w,col)=>el("line",{x1,y1,x2,y2,stroke:col||"var(--ink)","stroke-width":w||2,"stroke-linecap":"round"},svg);
-  L(40,74,36,128,2); L(60,74,64,128,2);                 // legs
-  L(31,128,41,128,3); L(59,128,69,128,3);               // feet
-  L(40,74,60,74,3);                                     // hips
-  L(50,74,50,30,2.4);                                   // spine
-  L(38,30,62,30,3);                                     // shoulders
-  el("circle",{cx:50,cy:16,r:8,fill:"none",stroke:"var(--ink)","stroke-width":2},svg);
-  L(50,26,50,30,2);                                     // neck
-  el("circle",{cx:50,cy:132,r:2.4,fill:"none",stroke:"var(--muted)","stroke-width":1.2},svg); // ball
-  const [hx,hy,cx,cy]=f;
-  L(38,30,hx,hy,1.8,"var(--golfer)"); L(62,30,hx,hy,1.8,"var(--golfer)"); // arms
-  L(hx,hy,cx,cy,2.2,"var(--c-down)");                   // club shaft
-  el("circle",{cx:hx,cy:hy,r:3.2,fill:"var(--c-down)"},svg);            // hands
-  el("text",{x:96,y:126,"text-anchor":"end","font-size":7,fill:"var(--muted)"},svg).textContent="target →";
-}
-let _pguideBuilt=false;
-function buildPGuide(){
-  if (_pguideBuilt) return; _pguideBuilt=true;
-  const grid=$("pguideGrid"); grid.textContent="";
-  PFIG.forEach((f,idx)=>{
-    const P=idx+1;
-    const cell=document.createElement("div"); cell.className="pguide-cell";
-    const svg=document.createElementNS(SVGNS,"svg"); svg.setAttribute("viewBox","0 0 100 140");
-    drawFig(svg,f);
-    const ttl=document.createElement("div"); ttl.className="ttl"; ttl.textContent=`P${P} · ${PHASES[P-1][1]}`;
-    const nm=document.createElement("div"); nm.className="nm"; nm.textContent=PHASES[P-1][2];
-    cell.append(svg,ttl,nm); grid.appendChild(cell);
-  });
-}
-const PGUIDE_IMG_KEY="handpathlab.pguide.img";
-function showPGuideImage(dataURL){
-  const img=$("pguideImg");
-  if (dataURL){ img.src=dataURL; img.hidden=false; $("pguideGrid").hidden=true; $("pguideUseSchem").hidden=false; }
-  else { img.hidden=true; $("pguideGrid").hidden=false; $("pguideUseSchem").hidden=true; }
-}
-const PGUIDE_DEFAULT="pguide.jpg";   // bundled reference photo (thediygolfer.com montage)
-function openPGuide(){
-  buildPGuide();
-  showPGuideImage(localStorage.getItem(PGUIDE_IMG_KEY)||PGUIDE_DEFAULT);
-  $("pguideModal").removeAttribute("hidden");
-}
+/* ---------- P-position reference guide: just the bundled photo ---------- */
+function openPGuide(){ $("pguideModal").removeAttribute("hidden"); }
 function closePGuide(){ $("pguideModal").setAttribute("hidden",""); }
 $("btnPGuide").addEventListener("click",openPGuide);
-$("pguideUpload").addEventListener("click",()=>$("pguideFile").click());
-$("pguideFile").addEventListener("change",e=>{
-  const f=e.target.files[0]; if(!f) return;
-  const fr=new FileReader();
-  fr.onload=()=>{ try{ localStorage.setItem(PGUIDE_IMG_KEY, fr.result); }catch(_){ toast("Image too large to save"); } showPGuideImage(fr.result); };
-  fr.readAsDataURL(f); e.target.value="";
-});
-$("pguideUseSchem").addEventListener("click",()=>{ localStorage.removeItem(PGUIDE_IMG_KEY); showPGuideImage(null); });
 $("pguideClose").addEventListener("click",closePGuide);
 $("pguideModal").addEventListener("click",(e)=>{ if(e.target===$("pguideModal")) closePGuide(); });
 document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && !$("pguideModal").hasAttribute("hidden")) closePGuide(); });
