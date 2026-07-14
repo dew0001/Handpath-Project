@@ -783,7 +783,8 @@ function pathD(xs, ys, toX, toY, i0, i1){
 }
 
 const GRID_STEP = 6;   // inches per grid cell (fine grid to read movement)
-function drawGrid(svg, view){
+function drawGrid(svg, view, k){
+  k = k||1;              // counter-scale for zoomed compare panels: keeps text/strokes constant on screen
   const g = el("g",{class:"grid"},svg);
   const [W,H,toX,toY] = view==="face" ? [FACE.w,FACE.h,fx,fy] : [DTL.w,DTL.h,dx,dy];
   const s = view==="face"?FACE.s:DTL.s;
@@ -795,38 +796,38 @@ function drawGrid(svg, view){
     for (let gx=xmin; gx<=xmax; gx+=GRID_STEP){
       const major = gx%12===0, zero = gx===0;
       if (zero)   // dark halo keeps the white centerline visible on light stages too
-        el("line",{x1:toX(gx),y1:toY(ytop),x2:toX(gx),y2:toY(0),stroke:"rgba(0,0,0,.45)","stroke-width":3},g);
+        el("line",{x1:toX(gx),y1:toY(ytop),x2:toX(gx),y2:toY(0),stroke:"rgba(0,0,0,.45)","stroke-width":3*k},g);
       el("line",{x1:toX(gx),y1:toY(ytop),x2:toX(gx),y2:toY(0),
-        stroke:zero?"#FFFFFF":"var(--grid)","stroke-width":zero?1.6:1,opacity:major?1:.55},g);
+        stroke:zero?"#FFFFFF":"var(--grid)","stroke-width":(zero?1.6:1)*k,opacity:major?1:.55},g);
       if (major && gx!==0 && Math.abs(gx)<=Math.max(-xmin,xmax)-6){          // x value labels along the bottom
-        const t=el("text",{x:toX(gx),y:toY(0)+13,"text-anchor":"middle","font-size":8.5,fill:"var(--muted)"},g);
+        const t=el("text",{x:toX(gx),y:toY(0)+13*k,"text-anchor":"middle","font-size":8.5*k,fill:"var(--muted)"},g);
         t.textContent = (gx>0?"+":"")+gx;
       }
     }
     for (let gy=0; gy<=ytop; gy+=GRID_STEP){
       const major = gy%12===0, ground = gy===0;
       el("line",{x1:14,y1:toY(gy),x2:W-14,y2:toY(gy),
-        stroke:ground?"var(--ground)":"var(--grid)","stroke-width":ground?1.6:1,opacity:major?1:.55},g);
+        stroke:ground?"var(--ground)":"var(--grid)","stroke-width":(ground?1.6:1)*k,opacity:major?1:.55},g);
       if (major && gy>0){
-        const t = el("text",{x:W-16,y:toY(gy)-2,"text-anchor":"end","font-size":8.5,fill:"var(--muted)"},g);
+        const t = el("text",{x:W-16,y:toY(gy)-2,"text-anchor":"end","font-size":8.5*k,fill:"var(--muted)"},g);
         t.textContent = gy+"″";
       }
     }
   } else {
-    el("line",{x1:14,y1:toY(0),x2:W-14,y2:toY(0),stroke:"var(--ground)","stroke-width":1.6},g);
-    el("line",{x1:toX(0),y1:toY(ytop),x2:toX(0),y2:toY(0),stroke:"rgba(0,0,0,.45)","stroke-width":2.8},g);
-    el("line",{x1:toX(0),y1:toY(ytop),x2:toX(0),y2:toY(0),stroke:"#FFFFFF","stroke-width":1.4},g);
+    el("line",{x1:14,y1:toY(0),x2:W-14,y2:toY(0),stroke:"var(--ground)","stroke-width":1.6*k},g);
+    el("line",{x1:toX(0),y1:toY(ytop),x2:toX(0),y2:toY(0),stroke:"rgba(0,0,0,.45)","stroke-width":2.8*k},g);
+    el("line",{x1:toX(0),y1:toY(ytop),x2:toX(0),y2:toY(0),stroke:"#FFFFFF","stroke-width":1.4*k},g);
   }
   // axis labels: the 0 centerline tick, and the x-axis meaning
-  const zlab = el("text",{x:toX(0),y:toY(0)+13,"text-anchor":"middle","font-size":8.5,fill:"var(--muted)"},g);
+  const zlab = el("text",{x:toX(0),y:toY(0)+13*k,"text-anchor":"middle","font-size":8.5*k,fill:"var(--muted)"},g);
   zlab.textContent = "0";
-  const ax = el("text",{x:toX(0),y:20,"text-anchor":"middle","font-size":9,fill:"var(--muted)"},g);
+  const ax = el("text",{x:toX(0),y:20,"text-anchor":"middle","font-size":9*k,fill:"var(--muted)"},g);
   ax.textContent = view==="face" ? "x = inches from body center  ·  y = inches above ground" : "x = depth (inches toward ball)  ·  y = inches above ground";
   if (view==="face"){
-    const t1=el("text",{x:W-16,y:toY(0)+26,"text-anchor":"end","font-size":10,fill:"var(--muted)"},g);
+    const t1=el("text",{x:W-16,y:toY(0)+26*k,"text-anchor":"end","font-size":10*k,fill:"var(--muted)"},g);
     t1.textContent="target →";
   } else {
-    const t2=el("text",{x:16,y:toY(0)+26,"font-size":9,fill:"var(--muted)"},g);
+    const t2=el("text",{x:16,y:toY(0)+26*k,"font-size":9*k,fill:"var(--muted)"},g);
     t2.textContent="← behind · toward ball →";
   }
 }
@@ -850,10 +851,11 @@ function renderSwingInto(svg, view, comp, opts){
   if (view==="face" && !is3d && capView!=="face") return;
   const HX = (view==="dtl" && !is3d) ? S.hx /* 2D dtl stored in hx as horizontal */ : X;
 
+  const mk = opts.mk||1;   // counter-scale so strokes/labels stay constant on screen when zoomed
   const g = el("g",{class:"swing"},svg);
   if (opts.overlayColor){
-    el("path",{d:pathD(HX,S.hy,toX,toY,0,topIdx),fill:"none",stroke:opts.overlayColor,"stroke-width":2,"stroke-dasharray":"5 5",opacity:.85},g);
-    el("path",{d:pathD(HX,S.hy,toX,toY,topIdx,DENSE-1),fill:"none",stroke:opts.overlayColor,"stroke-width":2,opacity:.9},g);
+    el("path",{d:pathD(HX,S.hy,toX,toY,0,topIdx),fill:"none",stroke:opts.overlayColor,"stroke-width":2*mk,"stroke-dasharray":`${5*mk} ${5*mk}`,opacity:.85},g);
+    el("path",{d:pathD(HX,S.hy,toX,toY,topIdx,DENSE-1),fill:"none",stroke:opts.overlayColor,"stroke-width":2*mk,opacity:.9},g);
     return;
   }
   // clubhead trace (primary only)
@@ -861,18 +863,18 @@ function renderSwingInto(svg, view, comp, opts){
   if (opts.club && comp.hasClub && (is3d || capView===view)){
     const CH = (view==="dtl" && !is3d) ? S.cx : CXv;
     if (CH && CH[0]!=null)
-      el("path",{d:pathD(CH,S.cy,toX,toY,0,DENSE-1),fill:"none",stroke:"var(--c-club)","stroke-width":1.4,opacity:.55},g);
+      el("path",{d:pathD(CH,S.cy,toX,toY,0,DENSE-1),fill:"none",stroke:"var(--c-club)","stroke-width":1.4*mk,opacity:.55},g);
   }
   if (opts.velocity){
     const vmax = Math.max(...S.handSpd);
     for (let i=1;i<DENSE;i++){
       if (HX[i]==null||HX[i-1]==null) continue;
       el("line",{x1:toX(HX[i-1]),y1:toY(S.hy[i-1]),x2:toX(HX[i]),y2:toY(S.hy[i]),
-        stroke:speedColor(S.handSpd[i],vmax),"stroke-width":2.6,"stroke-linecap":"round"},g);
+        stroke:speedColor(S.handSpd[i],vmax),"stroke-width":2.6*mk,"stroke-linecap":"round"},g);
     }
   } else {
-    el("path",{d:pathD(HX,S.hy,toX,toY,0,topIdx),fill:"none",stroke:"var(--c-back)","stroke-width":2.4,"stroke-linecap":"round"},g);
-    el("path",{d:pathD(HX,S.hy,toX,toY,topIdx,DENSE-1),fill:"none",stroke:"var(--c-down)","stroke-width":2.4,"stroke-linecap":"round"},g);
+    el("path",{d:pathD(HX,S.hy,toX,toY,0,topIdx),fill:"none",stroke:"var(--c-back)","stroke-width":2.4*mk,"stroke-linecap":"round"},g);
+    el("path",{d:pathD(HX,S.hy,toX,toY,topIdx,DENSE-1),fill:"none",stroke:"var(--c-down)","stroke-width":2.4*mk,"stroke-linecap":"round"},g);
   }
   // digitized body-point traces (2D captures) — hip / shoulder / head
   if (!is3d && capView===view){
@@ -882,8 +884,8 @@ function renderSwingInto(svg, view, comp, opts){
       const {xs,ys}=comp.extras[k];
       let d="";
       for (let i=0;i<xs.length;i++) d+=(d?"L":"M")+toX(xs[i]).toFixed(1)+" "+toY(ys[i]).toFixed(1);
-      el("path",{d,fill:"none",stroke:EX_COLORS[k],"stroke-width":1.4,opacity:.6,"stroke-dasharray":"2 3"},g);
-      const t=el("text",{x:toX(xs[xs.length-1])+5,y:toY(ys[ys.length-1]),"font-size":9,fill:EX_COLORS[k]},g);
+      el("path",{d,fill:"none",stroke:EX_COLORS[k],"stroke-width":1.4*mk,opacity:.6,"stroke-dasharray":`${2*mk} ${3*mk}`},g);
+      const t=el("text",{x:toX(xs[xs.length-1])+5*mk,y:toY(ys[ys.length-1]),"font-size":9*mk,fill:EX_COLORS[k]},g);
       t.textContent=EX_LABEL[k];
     }
   }
@@ -893,7 +895,7 @@ function renderSwingInto(svg, view, comp, opts){
       if (!a.ref) continue;
       const ax = view==="face" ? a.h[0] : (a.h[2]!=null?a.h[2]:(capView==="dtl"?a.h[0]:null));
       if (ax==null) continue;
-      el("circle",{cx:toX(ax),cy:toY(a.h[1]),r:2,fill:"none",stroke:"var(--muted)","stroke-width":1,opacity:.7},g);
+      el("circle",{cx:toX(ax),cy:toY(a.h[1]),r:2*mk,fill:"none",stroke:"var(--muted)","stroke-width":1*mk,opacity:.7},g);
     }
   }
   // P markers at the exact tagged anchors (same frames you tagged in Digitize)
@@ -903,8 +905,8 @@ function renderSwingInto(svg, view, comp, opts){
       if (!a.p || seen.has(a.p)) continue; seen.add(a.p);
       const ax = view==="face" ? a.h[0] : (a.h[2]!=null ? a.h[2] : (capView==="dtl" ? a.h[0] : null));
       if (ax==null) continue;
-      el("circle",{cx:toX(ax),cy:toY(a.h[1]),r:2.6,fill:"var(--stage)",stroke:"var(--muted)","stroke-width":1.2},g);
-      const t = el("text",{x:toX(ax)+5,y:toY(a.h[1])-5,"font-size":9,fill:"var(--muted)"},g);
+      el("circle",{cx:toX(ax),cy:toY(a.h[1]),r:2.6*mk,fill:"var(--stage)",stroke:"var(--muted)","stroke-width":1.2*mk},g);
+      const t = el("text",{x:toX(ax)+5*mk,y:toY(a.h[1])-5*mk,"font-size":9*mk,fill:"var(--muted)"},g);
       t.textContent="P"+a.p;
     }
   }
@@ -2261,9 +2263,9 @@ function applyCmpZoom(svg,key){
   zm.cx=cx; zm.cy=cy;
   svg.setAttribute("viewBox",`${(cx-w2/2).toFixed(1)} ${(cy-h2/2).toFixed(1)} ${w2.toFixed(1)} ${h2.toFixed(1)}`);
 }
-function cmpZoomAll(key){ document.querySelectorAll(`svg[id^="cmp_${key==="G"?"ghost":key}_"]`).forEach(s=>applyCmpZoom(s,key)); }
-function cmpZoomBump(key,f){ const zm=cmpZoom[key]; zm.z=Math.min(8,Math.max(1,zm.z*f)); if(zm.z===1){zm.cx=zm.cy=null;} cmpZoomAll(key); }
-function cmpZoomReset(key){ cmpZoom[key]={z:1,cx:null,cy:null}; cmpZoomAll(key); }
+function cmpZoomRedraw(key){ if(key==="G") drawGhostAll(); else drawCmpSlot(key); }  // rebuild so strokes/labels re-counter-scale
+function cmpZoomBump(key,f){ const zm=cmpZoom[key]; zm.z=Math.min(8,Math.max(1,zm.z*f)); if(zm.z===1){zm.cx=zm.cy=null;} cmpZoomRedraw(key); }
+function cmpZoomReset(key){ cmpZoom[key]={z:1,cx:null,cy:null}; cmpZoomRedraw(key); }
 function attachCmpZoom(svg){
   const key=cmpZoomKey(svg); if(!key) return;
   svg.addEventListener("wheel",(e)=>{
@@ -2276,7 +2278,7 @@ function attachCmpZoom(svg){
     const cx=zm.cx==null?vb[0]+vb[2]/2:zm.cx, cy=zm.cy==null?vb[1]+vb[3]/2:zm.cy;
     zm.cx=px-(px-cx)*(zm.z/nz); zm.cy=py-(py-cy)*(zm.z/nz);
     zm.z=nz; if(nz===1){zm.cx=zm.cy=null;}
-    applyCmpZoom(svg,key);
+    cmpZoomRedraw(key);
   },{passive:false});
   svg.addEventListener("pointerdown",(e)=>{
     if (annoTool || e.button!==0 || cmpZoom[key].z<=1) return;   // annotation tools keep priority
@@ -2310,12 +2312,13 @@ function drawPanel(svg, slot, view){
   svg.setAttribute("viewBox", vb);
   svg.dataset.baseVb=vb;
   applyCmpZoom(svg, slot);
-  drawGrid(svg, view);
+  const mk=1/Math.max(1,cmpZoom[slot].z);
+  drawGrid(svg, view, mk);
   if (!comp) { drawAnnotationsFor(svg); return; }
   const xg=xformGroup(svg, view, cmp.xf[slot]);
   insertVideoRec(xg, cmp.vids[slot], view);
-  renderSwingInto(xg, view, comp, { club:$("tglClub").checked, velocity:$("tglVelocity").checked });
-  drawPosRing(xg, comp, view, slotPos(slot), slot==="A"?"var(--c-down)":"var(--c-ov1)");
+  renderSwingInto(xg, view, comp, { club:$("tglClub").checked, velocity:$("tglVelocity").checked, mk });
+  drawPosRing(xg, comp, view, slotPos(slot), slot==="A"?"var(--c-down)":"var(--c-ov1)", mk);
   drawAnnotationsFor(svg);
 }
 /* ghost: swing A solid + swing B superimposed as a translucent ghost, in one panel */
@@ -2332,18 +2335,19 @@ function drawGhostView(view){
   svg.setAttribute("viewBox", vb);
   svg.dataset.baseVb=vb;
   applyCmpZoom(svg,"G");
-  drawGrid(svg,view);
+  const mk=1/Math.max(1,cmpZoom.G.z);
+  drawGrid(svg,view,mk);
   // both videos first (behind), at each swing's opacity
   if (showVid){
     if(cA){ const vg=xformGroup(svg,view,cmp.xf.A); vg.setAttribute("opacity",String(cmp.op.A)); insertVideoRec(vg,cmp.vids.A,view); }
     if(cB){ const vg=xformGroup(svg,view,cmp.xf.B); vg.setAttribute("opacity",String(cmp.op.B*0.9)); insertVideoRec(vg,cmp.vids.B,view); }
   }
   if(cA){ const xg=xformGroup(svg,view,cmp.xf.A); xg.setAttribute("opacity",String(Math.max(cmp.op.A,0.5)));
-    renderSwingInto(xg,view,cA,{club:$("tglClub").checked,velocity:false});
-    drawPosRing(xg,cA,view,cmp.posA,"var(--c-down)"); }
+    renderSwingInto(xg,view,cA,{club:$("tglClub").checked,velocity:false,mk});
+    drawPosRing(xg,cA,view,cmp.posA,"var(--c-down)",mk); }
   if(cB){ const xg=xformGroup(svg,view,cmp.xf.B); xg.setAttribute("opacity",String(Math.max(cmp.op.B,0.4)));
-    renderSwingInto(xg,view,cB,{overlayColor:"var(--c-ov1)"});
-    drawPosRing(xg,cB,view,cmp.posB,"var(--c-ov1)"); }
+    renderSwingInto(xg,view,cB,{overlayColor:"var(--c-ov1)",mk});
+    drawPosRing(xg,cB,view,cmp.posB,"var(--c-ov1)",mk); }
   drawAnnotationsFor(svg);
 }
 function drawGhostAll(){
@@ -2352,12 +2356,13 @@ function drawGhostAll(){
   syncCmpVideo("A"); syncCmpVideo("B");
   updateCmpPhase("A"); updateCmpPhase("B");
 }
-function drawPosRing(g, comp, view, pos, color){
+function drawPosRing(g, comp, view, pos, color, mk){
+  mk=mk||1;
   const i=sampleIndex(comp,pos), S=comp.S, is3d=comp.has3d, capView=comp.sw.view;
   const toX=view==="face"?fx:dx, toY=view==="face"?fy:dy;
   const hx=view==="face"?S.hx[i]:(is3d?S.hz[i]:(capView==="dtl"?S.hx[i]:null));
   if(hx==null) return;
-  el("circle",{cx:toX(hx),cy:toY(S.hy[i]),r:6,fill:"none",stroke:color,"stroke-width":2.2},g);
+  el("circle",{cx:toX(hx),cy:toY(S.hy[i]),r:6*mk,fill:"none",stroke:color,"stroke-width":2.2*mk},g);
 }
 function updateCmpPhase(slot){
   const el2=$(`cmp_phase_${slot}`); if(!el2) return;
