@@ -2241,6 +2241,65 @@ function xformGroup(svg, view, xf){
   const T=view==="face"?FACE:DTL;
   return el("g",{transform:`translate(${T.cx} ${T.groundY+xf.dy}) scale(${xf.s}) translate(${-T.cx} ${-T.groundY})`},svg);
 }
+/* ---- per-video zoom (wheel to zoom at cursor, drag to pan when zoomed) ---- */
+const cmpZoom={A:{z:1,cx:null,cy:null},B:{z:1,cx:null,cy:null},G:{z:1,cx:null,cy:null}};
+function cmpZoomKey(svg){ const id=svg.id||""; return id.startsWith("cmp_ghost")?"G":id.startsWith("cmp_A")?"A":id.startsWith("cmp_B")?"B":null; }
+function svgPoint(svg,e){   // client -> viewBox coords, honoring preserveAspectRatio "meet" letterboxing
+  const r=svg.getBoundingClientRect(), vb=svg.getAttribute("viewBox").split(/\s+/).map(Number);
+  const sc=Math.min(r.width/vb[2], r.height/vb[3]);
+  const ox=(r.width-vb[2]*sc)/2, oy=(r.height-vb[3]*sc)/2;
+  return [vb[0]+(e.clientX-r.left-ox)/sc, vb[1]+(e.clientY-r.top-oy)/sc, sc];
+}
+function applyCmpZoom(svg,key){
+  const base=(svg.dataset.baseVb||svg.getAttribute("viewBox")).split(/\s+/).map(Number);
+  const zm=cmpZoom[key], [x,y,w,h]=base, z=Math.max(1,zm.z);
+  const w2=w/z, h2=h/z;
+  let cx=zm.cx==null?x+w/2:zm.cx, cy=zm.cy==null?y+h/2:zm.cy;
+  cx=Math.min(x+w-w2/2, Math.max(x+w2/2, cx));   // keep the window inside the base frame
+  cy=Math.min(y+h-h2/2, Math.max(y+h2/2, cy));
+  zm.cx=cx; zm.cy=cy;
+  svg.setAttribute("viewBox",`${(cx-w2/2).toFixed(1)} ${(cy-h2/2).toFixed(1)} ${w2.toFixed(1)} ${h2.toFixed(1)}`);
+}
+function cmpZoomAll(key){ document.querySelectorAll(`svg[id^="cmp_${key==="G"?"ghost":key}_"]`).forEach(s=>applyCmpZoom(s,key)); }
+function cmpZoomBump(key,f){ const zm=cmpZoom[key]; zm.z=Math.min(8,Math.max(1,zm.z*f)); if(zm.z===1){zm.cx=zm.cy=null;} cmpZoomAll(key); }
+function cmpZoomReset(key){ cmpZoom[key]={z:1,cx:null,cy:null}; cmpZoomAll(key); }
+function attachCmpZoom(svg){
+  const key=cmpZoomKey(svg); if(!key) return;
+  svg.addEventListener("wheel",(e)=>{
+    e.preventDefault();
+    const zm=cmpZoom[key];
+    const [px,py]=svgPoint(svg,e);
+    const nz=Math.min(8,Math.max(1, zm.z*(e.deltaY<0?1.2:1/1.2)));
+    if (nz===zm.z) return;
+    const vb=svg.getAttribute("viewBox").split(/\s+/).map(Number);
+    const cx=zm.cx==null?vb[0]+vb[2]/2:zm.cx, cy=zm.cy==null?vb[1]+vb[3]/2:zm.cy;
+    zm.cx=px-(px-cx)*(zm.z/nz); zm.cy=py-(py-cy)*(zm.z/nz);
+    zm.z=nz; if(nz===1){zm.cx=zm.cy=null;}
+    applyCmpZoom(svg,key);
+  },{passive:false});
+  svg.addEventListener("pointerdown",(e)=>{
+    if (annoTool || e.button!==0 || cmpZoom[key].z<=1) return;   // annotation tools keep priority
+    e.preventDefault();
+    const zm=cmpZoom[key];
+    const start={x:e.clientX,y:e.clientY,cx:zm.cx,cy:zm.cy};
+    const sc=svgPoint(svg,e)[2];
+    const move=(ev)=>{ zm.cx=start.cx-(ev.clientX-start.x)/sc; zm.cy=start.cy-(ev.clientY-start.y)/sc; applyCmpZoom(svg,key); };
+    const up=()=>{ window.removeEventListener("pointermove",move); window.removeEventListener("pointerup",up); };
+    window.addEventListener("pointermove",move); window.addEventListener("pointerup",up);
+  });
+}
+function cmpZoomButtons(key){
+  const zc=document.createElement("span");
+  zc.style.cssText="margin-left:auto;display:flex;gap:3px;align-items:center";
+  const mk=(txt,fn,title)=>{ const b=document.createElement("button");
+    b.textContent=txt; b.title=title; b.style.cssText="padding:0 7px;font-size:11px";
+    b.addEventListener("click",fn); zc.appendChild(b); return b; };
+  mk("−",()=>cmpZoomBump(key,1/1.3),"Zoom out");
+  mk("＋",()=>cmpZoomBump(key,1.3),"Zoom in");
+  mk("Fit",()=>cmpZoomReset(key),"Reset zoom");
+  return zc;
+}
+
 function drawPanel(svg, slot, view){
   svg.textContent="";
   const comp=compiled(slotSwingId(slot));
@@ -2248,6 +2307,8 @@ function drawPanel(svg, slot, view){
   let vb=`0 0 ${T.w} ${T.h}`;
   if (comp){ const {box,mf}=fitRegion(comp,view,cmp.xf[slot],cmp.vids[slot]); if (box) vb=fitBox(box,T,mf); }
   svg.setAttribute("viewBox", vb);
+  svg.dataset.baseVb=vb;
+  applyCmpZoom(svg, slot);
   drawGrid(svg, view);
   if (!comp) { drawAnnotationsFor(svg); return; }
   const xg=xformGroup(svg, view, cmp.xf[slot]);
@@ -2266,7 +2327,10 @@ function drawGhostView(view){
   let box=null, mf=0.22;
   if(cA){ const r=fitRegion(cA,view,cmp.xf.A,cmp.vids.A); box=unionBox(box,r.box); if(r.mf<mf)mf=r.mf; }
   if(cB){ const r=fitRegion(cB,view,cmp.xf.B,cmp.vids.B); box=unionBox(box,r.box); if(r.mf<mf)mf=r.mf; }
-  svg.setAttribute("viewBox", box?fitBox(box,T,mf):`0 0 ${T.w} ${T.h}`);
+  const vb = box?fitBox(box,T,mf):`0 0 ${T.w} ${T.h}`;
+  svg.setAttribute("viewBox", vb);
+  svg.dataset.baseVb=vb;
+  applyCmpZoom(svg,"G");
   drawGrid(svg,view);
   // both videos first (behind), at each swing's opacity
   if (showVid){
@@ -2342,6 +2406,7 @@ function renderCompare(){
     const leg=document.createElement("div"); leg.className="cmp-head"; leg.style.gap="16px";
     leg.innerHTML=`<span><span class="tag">A</span> ${swA?swA.name:"—"}</span>`+
       `<span><span class="tag" style="background:var(--c-ov1)">B</span> ${swB?swB.name+" (ghost)":"—"}</span>`;
+    leg.appendChild(cmpZoomButtons("G"));
     wrap.appendChild(leg);
     const panels=document.createElement("div"); panels.className="cmp-panels";
     for (const v of views){
@@ -2350,7 +2415,7 @@ function renderCompare(){
       const svg=document.createElementNS(SVGNS,"svg"); svg.id=`cmp_ghost_${v}`;
       svg.dataset.annoKey=`ghost_${v}`;
       svg.setAttribute("viewBox", v==="face"?"0 0 760 520":"0 0 620 520");
-      attachDraw(svg);
+      attachDraw(svg); attachCmpZoom(svg);
       panel.append(lbl,svg); panels.appendChild(panel);
     }
     wrap.appendChild(panels);
@@ -2368,6 +2433,7 @@ function renderCompare(){
     const half=document.createElement("div"); half.className="cmp-half";
     const hd=document.createElement("div"); hd.className="cmp-head";
     hd.innerHTML=`<span class="tag${slot==="B"?" b":""}">${slot}</span> <span class="nm">${sw?sw.name:"— pick a swing —"}</span>`;
+    hd.appendChild(cmpZoomButtons(slot));
     half.appendChild(hd);
     for (const v of views){
       const stage=document.createElement("div"); stage.className="cmp-stage";
@@ -2378,7 +2444,7 @@ function renderCompare(){
       const svg=document.createElementNS(SVGNS,"svg"); svg.id=`cmp_${slot}_${v}`;
       svg.dataset.annoKey=`${slot}_${v}`;
       svg.setAttribute("viewBox", v==="face"?"0 0 760 520":"0 0 620 520");
-      attachDraw(svg);
+      attachDraw(svg); attachCmpZoom(svg);
       stage.appendChild(svg); half.appendChild(stage);
     }
     half.appendChild(buildCmpScrubber(slot, true));
