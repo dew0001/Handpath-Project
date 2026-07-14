@@ -111,11 +111,16 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 .stagebox.drawing svg,.cmp-panel.drawing svg{cursor:crosshair}
 /* compare mode */
 #compareWrap{display:flex;flex-direction:column;gap:14px}
-/* two swings ALWAYS side by side (no wrap); scroll horizontally if the windows grow */
-.cmp-row{display:flex;flex-direction:row;flex-wrap:nowrap;gap:14px;overflow-x:auto;align-items:flex-start;padding-bottom:6px}
-.cmp-slot{display:flex;flex-direction:column;gap:8px;flex:0 0 auto}
-.cmp-slot .cmp-head{font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px}
-.cmp-slot .cmp-head .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent);border-radius:4px;padding:1px 6px}
+/* one window: the two swings share a full-width panel, half each */
+.cmp-duo{display:flex;flex-direction:row;gap:10px;align-items:flex-start}
+.cmp-half{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:6px}
+.cmp-half .cmp-stage{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:4px;position:relative}
+.cmp-half svg{display:block;width:100%;height:auto}
+@media (max-width:700px){ .cmp-duo{flex-direction:column} }
+.cmp-head{font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px;min-width:0}
+.cmp-head .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmp-head .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);background:var(--c-down);border-radius:4px;padding:1px 6px}
+.cmp-head .tag.b{background:var(--c-ov1)}
 .cmp-panels{display:flex;flex-direction:column;gap:10px}
 /* each comparison window is drag-resizable (handle at bottom-right); the slider sets the default */
 .cmp-panel{background:var(--stage);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;position:relative;overflow:hidden;
@@ -127,6 +132,12 @@ main{display:grid;grid-template-columns:296px minmax(0,1fr);gap:16px;padding:16p
 .cmp-scrub .pj{display:flex;gap:3px;flex-wrap:wrap}
 .cmp-scrub .pj button{padding:1px 5px;font-size:11px}
 .cmp-scrub .phase{font-size:12px;font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:1px 9px}
+/* compact per-half scrubber for the single-window layout */
+.cmp-scrub.mini{padding:3px 8px;gap:5px}
+.cmp-scrub.mini input[type=range]{min-width:70px}
+.cmp-scrub.mini .pj{gap:2px}
+.cmp-scrub.mini .pj button{padding:0 4px;font-size:10px}
+.cmp-scrub.mini .phase{font-size:11px;padding:0 8px}
 
 /* ---------- transport ---------- */
 .transport{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:10px 14px;display:flex;flex-direction:column;gap:6px}
@@ -254,8 +265,8 @@ footer.app a{color:var(--accent)}
           <label class="row" style="gap:6px;font-size:12px">A opacity <input type="range" id="axOp" min="0.15" max="1" step="0.05" value="0.85" style="flex:1"></label>
           <label class="row" style="gap:6px;font-size:12px">B opacity <input type="range" id="bxOp" min="0.15" max="1" step="0.05" value="0.55" style="flex:1"></label>
         </div>
-        <label class="row" style="gap:6px;font-size:12px">Window size <input type="range" id="cmpSize" min="300" max="900" step="10" value="440" style="flex:1"></label>
-        <p class="hint" style="margin:0">…or drag the ⤡ corner of any window to resize it.</p>
+        <label class="row" id="cmpSizeRow" hidden style="gap:6px;font-size:12px">Window size <input type="range" id="cmpSize" min="300" max="900" step="10" value="440" style="flex:1"></label>
+        <p class="hint" id="cmpSizeHint" hidden style="margin:0">…or drag the ⤡ corner of any window to resize it.</p>
         <div id="resizeControls" class="stack" hidden>
           <p class="hint" style="margin:0">Match golfer size/position (per swing):</p>
           <label class="row" style="gap:6px;font-size:12px">A size <input type="range" id="axScale" min="0.6" max="1.6" step="0.01" value="1" style="flex:1"></label>
@@ -2292,9 +2303,14 @@ function drawCmpSlot(slot){
   for (const v of views){ const svg=$(`cmp_${slot}_${v}`); if(svg) drawPanel(svg,slot,v); }
   syncCmpVideo(slot); updateCmpPhase(slot);
 }
-function buildCmpScrubber(slot){
+function buildCmpScrubber(slot, mini){
   const comp=compiled(slotSwingId(slot));
-  const wrap=document.createElement("div"); wrap.className="cmp-scrub";
+  const wrap=document.createElement("div"); wrap.className="cmp-scrub"+(mini?" mini":"");
+  if (mini){
+    const tag=document.createElement("span"); tag.className="tag"+(slot==="B"?" b":"");
+    tag.style.cssText="font-size:10px;letter-spacing:.08em;color:var(--accent-ink);background:"+(slot==="A"?"var(--c-down)":"var(--c-ov1)")+";border-radius:4px;padding:0 5px;font-weight:700";
+    tag.textContent=slot; wrap.appendChild(tag);
+  }
   const pj=document.createElement("div"); pj.className="pj";
   const rng=document.createElement("input"); rng.type="range"; rng.min=0; rng.max=1000; rng.step=1; rng.value=Math.round(slotPos(slot)*1000);
   if (comp){
@@ -2340,29 +2356,31 @@ function renderCompare(){
     drawGhostAll();
     return;
   }
+  // single window: two halves side by side, each with its own compact scrubber + P jumps
   wrap.className="";
-  const row=document.createElement("div"); row.className="cmp-row";
+  const duo=document.createElement("div"); duo.className="cmp-duo";
   for (const slot of ["A","B"]){
     const id=slotSwingId(slot), sw=swingById(id);
-    const slotEl=document.createElement("div"); slotEl.className="cmp-slot";
+    const half=document.createElement("div"); half.className="cmp-half";
     const hd=document.createElement("div"); hd.className="cmp-head";
-    hd.innerHTML=`<span class="tag">${slot}</span> ${sw?sw.name:"— pick a swing —"}`;
-    slotEl.appendChild(hd);
-    const panels=document.createElement("div"); panels.className="cmp-panels";
+    hd.innerHTML=`<span class="tag${slot==="B"?" b":""}">${slot}</span> <span class="nm">${sw?sw.name:"— pick a swing —"}</span>`;
+    half.appendChild(hd);
     for (const v of views){
-      const panel=document.createElement("div"); panel.className="cmp-panel";
-      const lbl=document.createElement("span"); lbl.className="stagelabel"; lbl.textContent=v==="face"?"Face-on":"Down-the-line";
+      const stage=document.createElement("div"); stage.className="cmp-stage";
+      if (views.length>1){
+        const lbl=document.createElement("span"); lbl.className="stagelabel"; lbl.textContent=v==="face"?"Face-on":"Down-the-line";
+        stage.appendChild(lbl);
+      }
       const svg=document.createElementNS(SVGNS,"svg"); svg.id=`cmp_${slot}_${v}`;
       svg.dataset.annoKey=`${slot}_${v}`;
       svg.setAttribute("viewBox", v==="face"?"0 0 760 520":"0 0 620 520");
       attachDraw(svg);
-      panel.append(lbl,svg); panels.appendChild(panel);
+      stage.appendChild(svg); half.appendChild(stage);
     }
-    slotEl.appendChild(panels);
-    slotEl.appendChild(buildCmpScrubber(slot));
-    row.appendChild(slotEl);
+    half.appendChild(buildCmpScrubber(slot, true));
+    duo.appendChild(half);
   }
-  wrap.appendChild(row);
+  wrap.appendChild(duo);
   ensureCompareVideos();
   drawCmpSlot("A"); drawCmpSlot("B");
 }
@@ -2374,15 +2392,20 @@ function refreshCompareSel(){
   if (cmp.B && opts.some(s=>s.id===cmp.B)) sel.value=cmp.B;
   else { cmp.B = opts[0]?opts[0].id:null; sel.value=cmp.B||""; }
 }
+function updateCmpSizeVis(){   // window sizing only applies to the ghost panels now
+  const show = cmp.on && cmp.ghost;
+  $("cmpSizeRow").hidden = !show; $("cmpSizeHint").hidden = !show;
+}
 function setCompare(on){
   cmp.on=on;
   $("compareSel").disabled=!on; $("tglGhost").disabled=!on;
   $("stages").hidden=on; $("soloTransport").hidden=on; $("compareWrap").hidden=!on;
+  updateCmpSizeVis();
   if (on){ stopPlay(); refreshCompareSel(); $("resizeControls").hidden=!cmp.B; $("ghostOpacity").hidden=!cmp.ghost; renderCompare(); }
   else { $("resizeControls").hidden=true; $("ghostOpacity").hidden=true; rebuildStages(); }
 }
 $("tglCompare").addEventListener("change",e=>setCompare(e.target.checked));
-$("tglGhost").addEventListener("change",e=>{ cmp.ghost=e.target.checked; $("ghostOpacity").hidden=!cmp.ghost; renderCompare(); });
+$("tglGhost").addEventListener("change",e=>{ cmp.ghost=e.target.checked; $("ghostOpacity").hidden=!cmp.ghost; updateCmpSizeVis(); renderCompare(); });
 $("cmpSize").addEventListener("input",e=>{ document.documentElement.style.setProperty("--cmp-w", e.target.value+"px"); });
 $("axOp").addEventListener("input",e=>{ cmp.op.A=+e.target.value; if(cmp.ghost) drawGhostAll(); });
 $("bxOp").addEventListener("input",e=>{ cmp.op.B=+e.target.value; if(cmp.ghost) drawGhostAll(); });
