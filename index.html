@@ -1938,7 +1938,10 @@ $("btnSavePlayer").addEventListener("click",()=>{
       if (fr.pts[src]){ a[dst]=toWorld(fr.pts[src]); }
     return a;
   });
-  const existing=savedPlayers.find(s=>s.name===name);   // same name = update, don't duplicate
+  // same name (case/space-insensitive) = overwrite; also collapse any pre-existing duplicates
+  const norm = s => (s||"").trim().toLowerCase();
+  const dupes = savedPlayers.filter(s=>norm(s.name)===norm(name));
+  const existing = dupes[0] || null;
   const id = existing ? existing.id : "d"+Date.now().toString(36);
   const player={
     id,
@@ -1959,8 +1962,11 @@ $("btnSavePlayer").addEventListener("click",()=>{
   } else if (existing && existing.hasVideo){
     idbVideo("del", id);   // replaced by a capture without video
   }
-  if (existing) savedPlayers[savedPlayers.indexOf(existing)]=player;
-  else savedPlayers.push(player);
+  // drop stored videos of the extra duplicates being removed
+  for (const d of dupes.slice(1)){ if (d.hasVideo && d.id!==id) idbVideo("del", d.id); study.compiled.delete(d.id); study.overlays.delete(d.id); }
+  const dupIds = new Set(dupes.map(d=>d.id));
+  savedPlayers = savedPlayers.filter(s=>!dupIds.has(s.id));   // remove all same-name entries…
+  savedPlayers.push(player);                                  // …then add the single fresh one
   persistSaved(savedPlayers);
   study.compiled.delete(id);                            // recompile with the fresh anchors
   if (studyVid && studyVid.id===id) teardownStudyVideo();
