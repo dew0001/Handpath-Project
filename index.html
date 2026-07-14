@@ -2619,9 +2619,15 @@ let annoTool=null, annoColor="#e0483a", annoWidth=3, annoShow=true, annoDrawing=
 const getAnno = (k)=> (annoStore[k] || (annoStore[k]=[]));
 
 function svgVB(svg){ const v=(svg.getAttribute("viewBox")||"0 0 760 520").split(/\s+/).map(Number); return {x:v[0],y:v[1],w:v[2],h:v[3]}; }
-function svgCoords(svg,e){ const r=svg.getBoundingClientRect(), vb=svgVB(svg);
-  return [ vb.x+(e.clientX-r.left)/r.width*vb.w, vb.y+(e.clientY-r.top)/r.height*vb.h ]; }
-function annoTol(svg){ const r=svg.getBoundingClientRect(), vb=svgVB(svg); return r.width? 16*vb.w/r.width : 16; }
+/* client -> viewBox coords honoring preserveAspectRatio="xMidYMid meet"
+   (uniform scale + centering). Independent x/y ratios put shapes off when the
+   element box and viewBox aspect ratios differ, e.g. under the compare max-height cap. */
+function svgScale(svg){ const r=svg.getBoundingClientRect(), vb=svgVB(svg);
+  const sc=Math.min(r.width/vb.w, r.height/vb.h);
+  return { r, vb, sc, ox:(r.width-vb.w*sc)/2, oy:(r.height-vb.h*sc)/2 }; }
+function svgCoords(svg,e){ const {r,vb,sc,ox,oy}=svgScale(svg);
+  return [ vb.x+(e.clientX-r.left-ox)/sc, vb.y+(e.clientY-r.top-oy)/sc ]; }
+function annoTol(svg){ const {sc}=svgScale(svg); return sc>0 ? 16/sc : 16; }
 function shapeAnchors(s){ return s.tool==="pen" ? s.pts : [s.pts[0], s.pts[1], [(s.pts[0][0]+s.pts[1][0])/2,(s.pts[0][1]+s.pts[1][1])/2]]; }
 function distToShape(s, x, y){ let d=1e9; for(const p of shapeAnchors(s)) d=Math.min(d, Math.hypot(p[0]-x,p[1]-y)); return d; }
 function hitShape(list, x, y, tol){ let best=-1, bd=tol; for(let i=list.length-1;i>=0;i--){ const d=distToShape(list[i],x,y); if(d<bd){bd=d;best=i;} } return best; }
