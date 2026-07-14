@@ -370,6 +370,8 @@ footer.app a{color:var(--accent)}
     <div class="transport" id="soloTransport">
       <div class="controls">
         <button id="btnPlay" class="primary" style="min-width:74px">Play</button>
+        <button id="stPrev" title="Back one frame (←)">−1f</button>
+        <button id="stNext" title="Forward one frame (→)">+1f</button>
         <select id="playSpeed" aria-label="Playback speed">
           <option value="0.15">0.15×</option>
           <option value="0.3" selected>0.3×</option>
@@ -1289,6 +1291,16 @@ function startPlay(){
   rafId=requestAnimationFrame(step);
 }
 $("btnPlay").addEventListener("click",()=> study.playing?stopPlay():startPlay());
+/* step by source video frames at the swing's measured fps */
+function studyStep(n){
+  const comp=compiled(study.primary); if (!comp) return;
+  stopPlay();
+  const dur=comp.S.t[DENSE-1]-comp.S.t[0]; if (dur<=0) return;
+  study.pos=Math.max(0,Math.min(1, study.pos + n/(comp.sw.fps||30)/dur));
+  updateDynamic();
+}
+$("stPrev").addEventListener("click",()=>studyStep(-1));
+$("stNext").addEventListener("click",()=>studyStep(1));
 $("scrub").addEventListener("input",e=>{ stopPlay(); study.pos=e.target.value/1000; updateDynamic(); });
 
 $("primarySel").addEventListener("change",e=>{
@@ -1316,15 +1328,8 @@ document.addEventListener("keydown",(e)=>{
   if (!$("studyMain").hidden){
     if (e.key===" "){ e.preventDefault(); study.playing?stopPlay():startPlay(); }
     if (e.key==="ArrowRight"||e.key==="ArrowLeft"){
-      e.preventDefault(); stopPlay();
-      const comp=compiled(study.primary);
-      let d=(e.key==="ArrowRight"?1:-1)*(e.shiftKey?0.02:0.004);
-      if (comp){   // step by real video frames at the swing's captured fps
-        const dur=comp.S.t[DENSE-1]-comp.S.t[0];
-        const fps=comp.sw.fps||30;
-        if (dur>0) d=(e.key==="ArrowRight"?1:-1)*(e.shiftKey?5:1)/fps/dur;
-      }
-      study.pos=Math.max(0,Math.min(1,study.pos+d)); updateDynamic();
+      e.preventDefault();
+      studyStep((e.key==="ArrowRight"?1:-1)*(e.shiftKey?5:1));
     }
   } else {
     if (e.key==="ArrowRight"||e.key==="ArrowLeft"){ e.preventDefault(); digStep((e.key==="ArrowRight"?1:-1)*(e.shiftKey?5:1)); }
@@ -2420,8 +2425,20 @@ function buildCmpScrubber(slot, mini){
     }
   }
   rng.addEventListener("input",()=>{ setSlotPos(slot, +rng.value/1000); drawCmpSlot(slot); });
+  // frame-by-frame stepping at this swing's measured fps
+  const fstep=document.createElement("div"); fstep.className="pj";
+  const step=(n)=>{
+    const c=compiled(slotSwingId(slot)); if (!c) return;
+    const dur=c.S.t[DENSE-1]-c.S.t[0]; if (dur<=0) return;
+    const np=Math.max(0,Math.min(1, slotPos(slot) + n/(c.sw.fps||30)/dur));
+    setSlotPos(slot,np); rng.value=Math.round(np*1000); drawCmpSlot(slot);
+  };
+  for (const [txt,n] of [["−1f",-1],["+1f",1]]){
+    const b=document.createElement("button"); b.textContent=txt; b.title=(n<0?"Back":"Forward")+" one frame";
+    b.addEventListener("click",()=>step(n)); fstep.appendChild(b);
+  }
   const phase=document.createElement("span"); phase.className="phase"; phase.id=`cmp_phase_${slot}`;
-  wrap.append(pj, rng, phase);
+  wrap.append(pj, fstep, rng, phase);
   return wrap;
 }
 function renderCompare(){
