@@ -1442,12 +1442,17 @@ const dig = {
   sel:null,           // {tMs,key} currently-selected point (Delete removes)
 };
 function digCurMs(){ return dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : null; }
+/* the ONE frame considered "current": nearest within half a source frame.
+   (A fixed ±40ms window lit up several frames at once on 60fps captures.) */
+function digFrameTol(){ const fps=parseFloat($("digFps").value)||30; return Math.max(6, 500/fps); }
+function digCurFrame(){
+  const cur=digCurMs(); if (cur==null) return null;
+  let best=null, bd=digFrameTol();
+  for (const t of dig.frames.keys()){ const d=Math.abs(t-cur); if (d<bd){bd=d;best=t;} }
+  return best;
+}
 function nearestPoint(px,py,tolPx){
-  const cur = digCurMs();
-  if (cur==null) return null;
-  // match the frame closest to current time (within 40ms)
-  let tMs=null, best=1e9;
-  for (const t of dig.frames.keys()){ const d=Math.abs(t-cur); if (d<40 && d<best){best=d;tMs=t;} }
+  const tMs=digCurFrame();
   if (tMs==null) return null;
   const fr=dig.frames.get(tMs);
   let hitK=null, bd=tolPx*tolPx;
@@ -1680,7 +1685,8 @@ $("digOverlay").addEventListener("pointerdown",(e)=>{
   }
   dig.sel = null;
   // otherwise place/replace the selected keypoint on the current frame
-  const tMs = dig.kind==="video" ? digCurMs() : dig.frames.size*33;
+  // (snap to an existing frame within half a frame, so re-clicks don't spawn near-duplicate frames)
+  const tMs = dig.kind==="video" ? (digCurFrame() ?? digCurMs()) : dig.frames.size*33;
   if (!dig.frames.has(tMs)) dig.frames.set(tMs,{pts:{},p:0});
   const frame=dig.frames.get(tMs);
   frame.pts[KPS[dig.kp].k]=[px,py];
@@ -1732,10 +1738,10 @@ function applyTag(fr, val){
 }
 $("digPhase").addEventListener("change",()=>{
   if (dig.kind!=="video") return;
-  const tMs=Math.round($("digVideo").currentTime*1000);
-  if (dig.frames.has(tMs) && $("digPhase").value){
+  const tMs=digCurFrame();
+  if (tMs!=null && $("digPhase").value){
     applyTag(dig.frames.get(tMs), $("digPhase").value);
-    $("digPhase").value=""; renderFrames();
+    $("digPhase").value=""; renderFrames(); redrawOverlay();
   }
 });
 $("btnUndo").addEventListener("click",()=>{
@@ -1767,10 +1773,10 @@ function redrawOverlay(){
   }
   if (d) el("path",{d,fill:"none",stroke:"var(--c-down)","stroke-width":r/1.6,opacity:.85},ov);
   // current-frame points (with labels), past frames faint
-  const cur = dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : null;
+  const curT = digCurFrame();
   for (const t of times){
     const fr=dig.frames.get(t);
-    const isCur = cur!=null && Math.abs(t-cur)<40;
+    const isCur = t===curT;
     for (const k in fr.pts){
       const kp=KPS.find(x=>x.k===k);
       const [cx0,cy0]=fr.pts[k];
@@ -1779,7 +1785,7 @@ function redrawOverlay(){
         stroke:isAI?kp.color:(isCur?"#fff":"none"),"stroke-width":isAI?r*0.55:(isCur?r/3:0),
         "stroke-dasharray":isAI?`${r*0.9} ${r*0.7}`:""},ov);
       if (isAI) el("circle",{cx:cx0,cy:cy0,r:r*0.35,fill:kp.color,opacity:isCur?1:.4},ov);
-      if (dig.sel && dig.sel.key===k && Math.abs(t-(digCurMs()??-1))<40)
+      if (dig.sel && dig.sel.key===k && dig.sel.tMs===t && isCur)
         el("circle",{cx:cx0,cy:cy0,r:r*1.9,fill:"none",stroke:"var(--accent)","stroke-width":r*0.4,opacity:.95},ov);
       if (isCur){
         const tx=el("text",{x:cx0+r*1.9,y:cy0+r*0.6,"font-size":r*2.0,"font-family":"sans-serif","font-weight":"600",
@@ -1802,11 +1808,11 @@ function renderFrames(){
   const list=$("framesList"); list.textContent="";
   const times=[...dig.frames.keys()].sort((a,b)=>a-b);
   if (!times.length){ list.innerHTML='<p class="hint">No frames yet.</p>'; buildPNav(); return; }
-  const curMs = digCurMs();
+  const curT = digCurFrame();
   for (const t of times){
     const fr=dig.frames.get(t);
     const row=document.createElement("div"); row.className="framerow";
-    if (curMs!=null && Math.abs(t-curMs)<40) row.style.background="var(--panel2)";
+    if (t===curT) row.style.background="var(--panel2)";
     const tm=document.createElement("button"); tm.className="mono"; tm.style.cssText="min-width:60px;padding:1px 5px;text-align:left";
     tm.textContent=(t/1000).toFixed(3)+"s"; tm.title="Jump to this frame";
     tm.addEventListener("click",()=>{ if (dig.kind==="video"){ $("digVideo").currentTime=t/1000; } });
