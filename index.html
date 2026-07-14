@@ -432,8 +432,8 @@ footer.app a{color:var(--accent)}
           </label>
         </div>
         <div class="row">
-          <label title="Your video's frame rate. Sets how far −1f/+1f steps (one frame = 1/fps sec) and how densely the AI samples. Doesn't affect saved timing.">fps <input type="number" id="digFps" value="30" min="10" max="240" style="width:52px"></label>
           <label>Height in <input type="number" id="digHeight" value="71" min="48" max="84" style="width:52px"></label>
+          <span class="hint mono" id="fpsBadge" title="Measured from the video at import">— fps</span>
         </div>
       </div>
     </div>
@@ -1444,7 +1444,7 @@ const dig = {
 function digCurMs(){ return dig.kind==="video" ? Math.round($("digVideo").currentTime*1000) : null; }
 /* the ONE frame considered "current": nearest within half a source frame.
    (A fixed ±40ms window lit up several frames at once on 60fps captures.) */
-function digFrameTol(){ const fps=parseFloat($("digFps").value)||30; return Math.max(6, 500/fps); }
+function digFrameTol(){ const fps=dig.fps||30; return Math.max(6, 500/fps); }
 function digCurFrame(){
   const cur=digCurMs(); if (cur==null) return null;
   let best=null, bd=digFrameTol();
@@ -1491,7 +1491,11 @@ $("videoFile").addEventListener("change",e=>{
   $("digMedia").removeAttribute("hidden");
   dig.media=v; dig.kind="video"; dig.videoFile=f;
   $("digName").value = f.name.replace(/\.[^.]+$/,"");
-  v.addEventListener("loadedmetadata",()=>{ setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000); detectFps(v); },{once:true});
+  v.addEventListener("loadedmetadata",()=>{
+    setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000);
+    setFps(30); $("fpsBadge").textContent="… fps";
+    measureFps(v).then(f2=>{ if (f2){ setFps(f2); toast(`Video frame rate: ${f2} fps`); } else setFps(30); });
+  },{once:true});
   resetCapture();
 });
 $("imageFile").addEventListener("change",e=>{
@@ -1564,56 +1568,77 @@ $("btnPan").addEventListener("click",()=>{
   $("digStage").classList.toggle("panning",panMode);
 });
 
-/* estimate the EFFECTIVE frame rate: time between visually-new pictures, not decoded
-   frames — a 30fps clip in a 60fps container (phone exports do this) must read 30.
-   Probes ~mid-video where there's motion. Silent fallback; the field stays editable. */
-function detectFps(v){
-  if (!v.requestVideoFrameCallback) return;
-  const cv=document.createElement("canvas"); cv.width=96; cv.height=160;
+/* Measure the video's EFFECTIVE frame rate once at import: seek through a short
+   mid-video window in fine steps, fingerprint the pixels, and time only visually-new
+   pictures. Seeks are deterministic, so this works for any rate — including 30fps
+   content that a phone exported inside a 60fps container. No user setting. */
+let _fpsRun=0;
+function setFps(f){ dig.fps=f; const b=$("fpsBadge"); if(b) b.textContent=f+" fps"; }
+async function measureFps(v){
+  const run=++_fpsRun;                    // a newer video load cancels this run
+  const cv=document.createElement("canvas"); cv.width=240; cv.height=400;
   const cx=cv.getContext("2d",{willReadFrequently:true});
-  const hash=()=>{ try{ cx.drawImage(v,0,0,96,160); const d=cx.getImageData(0,0,96,160).data;
-      let h=0; for(let i=0;i<d.length;i+=193) h=(h*31+d[i])>>>0; return h; }catch(_){ return null; } };
-  const deltas=[]; let lastT=null, lastH=null, done=false;
-  const finish=()=>{
-    if (done) return; done=true;
-    try{ v.pause(); v.currentTime=0; }catch(_){}
-    if (deltas.length>=4){
-      deltas.sort((a,b)=>a-b);
-      const med=deltas[Math.floor(deltas.length/2)];
-      if (med>0){
-        const raw=1/med, common=[24,25,30,50,60,120,240];
-        let best=common[0]; for(const c of common) if(Math.abs(c-raw)<Math.abs(best-raw)) best=c;
-        if (Math.abs(best-raw)/best<=0.2 && +$("digFps").value!==best){
-          $("digFps").value=best; toast(`Frame rate detected: ${best} fps (effective)`);
-        }
-      }
+  const hash=()=>{ cx.drawImage(v,0,0,240,400); const d=cx.getImageData(0,0,240,400).data;
+    let h=0; for(let i=0;i<d.length;i+=13) h=(h*31+d[i])>>>0; return h; };
+  const seek=t=>new Promise(res=>{ const d=()=>{v.removeEventListener("seeked",d);res();}; v.addEventListener("seeked",d); v.currentTime=t; });
+  const dur=v.duration||0; if (!dur) return null;
+  const t0=Math.max(0, Math.min(dur*0.45, dur-0.8));
+  const step=1/240, N=Math.min(160, Math.max(0, Math.floor((dur-t0)/step)-1));
+  const changes=[]; let lastH=null, lastT=null;
+  try{
+    for (let i=0;i<N; i++){
+      if (run!==_fpsRun) return null;
+      const t=t0+i*step;
+      await seek(t);
+      if (run!==_fpsRun) return null;
+      const h=hash();
+      if (lastH==null){ lastH=h; lastT=t; }
+      else if (h!==lastH){ changes.push(t-lastT); lastH=h; lastT=t; }
+      if (changes.length>=8) break;
     }
-  };
-  const tick=(_,meta)=>{
-    if (done) return;
-    const h=hash();
-    if (h!=null){
-      if (lastH==null){ lastH=h; lastT=meta.mediaTime; }
-      else if (h!==lastH){                    // only count frames that actually changed the picture
-        if (meta.mediaTime>lastT) deltas.push(meta.mediaTime-lastT);
-        lastH=h; lastT=meta.mediaTime;
-      }
-    }
-    if (deltas.length>=10) finish(); else v.requestVideoFrameCallback(tick);
-  };
-  v.muted=true;
-  try{ v.currentTime=Math.max(0, Math.min((v.duration||2)*0.4, (v.duration||2)-1.2)); }catch(_){}
-  const p=v.play(); if (p&&p.catch) p.catch(()=>{});
-  v.requestVideoFrameCallback(tick);
-  setTimeout(finish, 2500);
+  }catch(_){ return null; }
+  if (run===_fpsRun){ try{ await seek(0); }catch(_){} }
+  if (changes.length<3) return null;
+  changes.sort((a,b)=>a-b);
+  const med=changes[Math.floor(changes.length/2)];
+  if (!(med>0)) return null;
+  const raw=1/med, common=[24,25,30,48,50,60,100,120,240];
+  let best=common[0]; for(const c of common) if(Math.abs(c-raw)<Math.abs(best-raw)) best=c;
+  return Math.abs(best-raw)/best<=0.25 ? best : Math.max(10, Math.min(240, Math.round(raw)));
 }
 
-/* frame nav */
-function digStep(n){
+/* frame nav — ±1 steps by ACTUAL pictures (phone videos are often variable-rate:
+   a "60fps" clip can hold each picture twice in low light, so time-based steps
+   sometimes change nothing). We nudge in half-frame increments until the pixels
+   really change. ±5 stays time-based for coarse scrubbing. */
+const _stepCv=document.createElement("canvas"); _stepCv.width=240; _stepCv.height=400;
+const _stepCx=_stepCv.getContext("2d",{willReadFrequently:true});
+function _stepHash(v){
+  try{ _stepCx.drawImage(v,0,0,240,400); const d=_stepCx.getImageData(0,0,240,400).data;
+    let h=0; for(let i=0;i<d.length;i+=13) h=(h*31+d[i])>>>0; return h; }catch(_){ return null; }
+}
+let _stepBusy=false;
+async function digStep(n){
   if (dig.kind!=="video") return;
   const v=$("digVideo");
-  dig.fps=parseFloat($("digFps").value)||30;
-  v.currentTime=Math.max(0,Math.min(v.duration||0,v.currentTime+n/dig.fps));
+  const fps=dig.fps||30;
+  const clamp=t=>Math.max(0,Math.min(v.duration||0,t));
+  if (Math.abs(n)>1){ v.currentTime=clamp(v.currentTime+n/fps); return; }
+  if (_stepBusy) return; _stepBusy=true;
+  try{
+    const seekP=t=>new Promise(res=>{ const d=()=>{v.removeEventListener("seeked",d);res();}; v.addEventListener("seeked",d); v.currentTime=t; });
+    const dir=n>0?1:-1;
+    const h0=_stepHash(v);
+    let t=v.currentTime;
+    for (let i=0;i<8;i++){
+      const nt=clamp(t+dir/(fps*2));
+      if (nt===t) break;
+      t=nt;
+      await seekP(t);
+      const h=_stepHash(v);
+      if (h==null || h0==null || h!==h0) break;
+    }
+  } finally { _stepBusy=false; }
 }
 $("fPrev").addEventListener("click",()=>digStep(-1));
 $("fNext").addEventListener("click",()=>digStep(1));
@@ -1621,7 +1646,7 @@ $("fPrev5").addEventListener("click",()=>digStep(-5));
 $("fNext5").addEventListener("click",()=>digStep(5));
 $("digScrub").addEventListener("input",e=>{ if (dig.kind==="video") $("digVideo").currentTime=e.target.value/1000; });
 $("digVideo").addEventListener("timeupdate",()=>{
-  const t=$("digVideo").currentTime, fps=parseFloat($("digFps").value)||30;
+  const t=$("digVideo").currentTime, fps=dig.fps||30;
   $("digTime").textContent=t.toFixed(3)+" s · f"+Math.round(t*fps);
   $("digScrub").value=Math.round(t*1000);
   redrawOverlay(); renderFrames();
@@ -1873,7 +1898,7 @@ $("btnSavePlayer").addEventListener("click",()=>{
     name, club:$("digClub").value, view,
     source: [...dig.frames.values()].some(f=>f.ai&&f.ai.size) ? "auto-track (AI)" : "manual digitize",
     height:parseFloat($("digHeight").value)||71,
-    fps: parseFloat($("digFps").value)||30,
+    fps: dig.fps||30,
     anchors,
   };
   // store calibration + video so Study mode can overlay the path on the footage
@@ -1934,7 +1959,7 @@ function seekTo(v, t){
 async function runAutoTrack(){
   if (dig.kind!=="video"){ toast("Load a video first"); return; }
   const v=$("digVideo");
-  const fps=parseFloat($("digFps").value)||30;
+  const fps=dig.fps||30;
   const dur=v.duration||0;
   if (!dur){ toast("Video not ready yet"); return; }
   const prog=$("aiProgress"), bar=$("aiBar"), status=$("aiStatus");
@@ -2083,7 +2108,7 @@ async function exportProject(){
     app:"handpath-lab-project", version:1,
     meta:{ name, club:$("digClub").value, view:$("digView").value, dir:parseInt($("digDir").value,10), height:parseFloat($("digHeight").value)||71 },
     cal: dig.cal, vidW:$("digVideo").videoWidth||null, vidH:$("digVideo").videoHeight||null,
-    fps: parseFloat($("digFps").value)||30,
+    fps: dig.fps||30,
     frames: framesToJSON(),
     video: dig.videoFile ? await blobToDataURL(dig.videoFile) : null,
   };
@@ -2098,7 +2123,7 @@ async function importProject(file){
   // restore meta
   $("digName").value=proj.meta.name||""; $("digClub").value=proj.meta.club||"7-iron";
   $("digView").value=proj.meta.view||"face"; $("digDir").value=String(proj.meta.dir||1);
-  $("digHeight").value=proj.meta.height||71; if(proj.fps) $("digFps").value=proj.fps;
+  $("digHeight").value=proj.meta.height||71; setFps(proj.fps||30);
   const finish=()=>{
     dig.cal=proj.cal||null;
     if (dig.cal){ dig.calStep=-1; $("calReadout").textContent=`${dig.cal.pxPerIn.toFixed(2)} px/in`; renderCalSteps(); }
@@ -2112,7 +2137,11 @@ async function importProject(file){
     dig.videoFile=blob; dig.kind="video";
     const v=$("digVideo"); v.src=URL.createObjectURL(blob); v.hidden=false;
     $("digImage").hidden=true; $("digEmpty").hidden=true; $("digMedia").removeAttribute("hidden"); dig.media=v;
-    v.addEventListener("loadedmetadata",()=>{ setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000); finish(); },{once:true});
+    v.addEventListener("loadedmetadata",()=>{
+      setupOverlay(v.videoWidth,v.videoHeight); $("digScrub").max=Math.round(v.duration*1000); finish();
+      // the video is the truth — a stored fps may be an old manual value
+      measureFps(v).then(f2=>{ if (f2 && f2!==dig.fps){ setFps(f2); toast(`Video frame rate: ${f2} fps`); } });
+    },{once:true});
   } else finish();
 }
 $("btnExportProject").addEventListener("click",()=>exportProject().catch(e=>toast("Export failed")));
