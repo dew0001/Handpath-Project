@@ -296,6 +296,7 @@ footer.app a{color:var(--accent)}
       <h3>Display</h3>
       <div class="stack">
         <label class="row"><input type="checkbox" id="tglClub" checked> Clubhead path</label>
+        <label class="row"><input type="checkbox" id="tglPmarks" checked> P-position markers</label>
         <label class="row"><input type="checkbox" id="tglGolfer" checked> Golfer (hips · shoulders · head)</label>
         <label class="row"><input type="checkbox" id="tglVelocity"> Velocity coloring (hand speed)</label>
         <label class="row"><input type="checkbox" id="tglPlane"> Shaft plane (DTL)</label>
@@ -927,7 +928,7 @@ function renderSwingInto(svg, view, comp, opts){
     }
   }
   // P markers at the exact tagged anchors (same frames you tagged in Digitize)
-  if (comp.sw.anchors){
+  if (comp.sw.anchors && $("tglPmarks").checked){
     const seen=new Set();
     for (const a of comp.sw.anchors){
       if (!a.p || seen.has(a.p)) continue; seen.add(a.p);
@@ -1339,8 +1340,8 @@ $("primarySel").addEventListener("change",e=>{
   study.pos=0; stopPlay(); refreshSelectors();
   if (cmp.on){ if(cmp.B===study.primary) cmp.B=null; refreshCompareSel(); renderCompare(); } else rebuildStages();
 });
-for (const id of ["tglClub","tglGolfer","tglVelocity","tglPlane","tglGrid","tglVideo"])
-  $(id).addEventListener("change",()=>{ if(cmp.on){ drawCmpSlot("A"); drawCmpSlot("B"); } else rebuildStages(); });
+for (const id of ["tglClub","tglPmarks","tglGolfer","tglVelocity","tglPlane","tglGrid","tglVideo"])
+  $(id).addEventListener("change",()=>{ if(cmp.on){ if(cmp.ghost) drawGhostAll(); else { drawCmpSlot("A"); drawCmpSlot("B"); } } else rebuildStages(); });
 
 document.querySelectorAll(".viewtabs button").forEach(b=>{
   b.addEventListener("click",()=>{
