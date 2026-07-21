@@ -1041,6 +1041,11 @@ function ensureStudyVideo(){
     v.muted=true; v.playsInline=true; v.preload="auto"; v.style.pointerEvents="none";
     v.style.width=rec.cal.vidW+"px"; v.style.height=rec.cal.vidH+"px";
     rec.url=URL.createObjectURL(blob); v.src=rec.url;
+    // when a coalesced seek finishes, chase the latest target so scrubbing never lags behind
+    v.addEventListener("seeked",()=>{
+      if (studyVid!==rec || study.playing || rec.want==null) return;
+      if (Math.abs(v.currentTime-rec.want)>0.02){ try{ v.currentTime=rec.want; }catch(_){} }
+    });
     v.addEventListener("loadeddata",()=>{ rec.el=v; rec.ready=true; rebuildStages(); },{once:true});
   });
 }
@@ -1062,12 +1067,13 @@ function insertVideoGroup(svg, view){
   svg.insertBefore(g, svg.firstChild);   // behind everything
 }
 function syncStudyVideo(comp,pos){
-  if (!studyVid || !studyVid.ready) return;
+  if (!studyVid || !studyVid.ready || !studyVid.el) return;
   const {S}=comp;
   const t = (studyVid.cal.vidT0||0) + S.t[0] + pos*(S.t[DENSE-1]-S.t[0]);  // exact time, not nearest sample
-  if (Math.abs(studyVid.el.currentTime - t) > 0.005){
-    try { studyVid.el.currentTime = t; } catch(_){}
-  }
+  const v = studyVid.el;
+  studyVid.want = t;
+  if (v.seeking) return;                 // coalesce: a seek is in flight; 'seeked' re-checks the latest target
+  if (Math.abs(v.currentTime - t) > 0.008){ try { v.currentTime = t; } catch(_){} }
 }
 
 function rebuildStages(){
@@ -1124,12 +1130,17 @@ function sampleIndex(comp, pos){
   return lo;
 }
 
-function updateDynamic(){
+function updateDynamic(){                 // scrub / step: move overlay AND seek the video
+  const comp = compiled(study.primary);
+  if (!comp) return;
+  syncStudyVideo(comp, study.pos);
+  updateOverlay();
+}
+function updateOverlay(){                  // redraw overlay + readouts only (no video seek)
   const comp = compiled(study.primary);
   if (!comp) return;
   const i = sampleIndex(comp, study.pos);
   const { S } = comp;
-  syncStudyVideo(comp, study.pos);
   for (const view of ["face","dtl"]){
     const g = dyn[view]; if (!g) continue;
     g.textContent = "";
@@ -1305,24 +1316,63 @@ async function exportSavedProject(s){
 
 /* ---------- playback ---------- */
 let rafId=null, lastTs=null;
-function stopPlay(){ study.playing=false; $("btnPlay").textContent="Play"; if (rafId) cancelAnimationFrame(rafId); rafId=null; lastTs=null; }
+function stopPlay(){
+  study.playing=false; $("btnPlay").textContent="Play";
+  if (rafId) cancelAnimationFrame(rafId); rafId=null; lastTs=null;
+  if (studyVid && studyVid.el){ try{ studyVid.el.pause(); }catch(_){} }
+}
 function startPlay(){
+  const comp=compiled(study.primary); if (!comp) return;
   study.playing=true; $("btnPlay").textContent="Pause";
-  const comp=compiled(study.primary); if (!comp) return stopPlay();
-  const dur = comp.S.t[DENSE-1]-comp.S.t[0];
+  const dur = comp.S.t[DENSE-1]-comp.S.t[0]; if (dur<=0) return stopPlay();
+  const sp = parseFloat($("playSpeed").value);
+
+  // Smooth path: if the swing has a loaded video, PLAY it natively (the decoder
+  // streams frames forward) and drive the overlay from each presented frame —
+  // instead of seeking the video 60x/sec, which stutters on compressed footage.
+  if (studyVid && studyVid.ready && studyVid.el){
+    const v = studyVid.el;
+    const base = studyVid.cal.vidT0||0;
+    const t0 = base + comp.S.t[0], t1 = base + comp.S.t[DENSE-1];
+    if (study.pos>=0.999) study.pos=0;
+    const cur = t0 + study.pos*(t1-t0);
+    if (Math.abs(v.currentTime-cur)>0.05){ try{ v.currentTime=cur; }catch(_){} }
+    try{ v.playbackRate = Math.max(0.0625, Math.min(4, sp)); }catch(_){}
+    const useVfc = !!v.requestVideoFrameCallback;
+    const drive = ()=>{
+      if (!study.playing) return;
+      let pos = (v.currentTime - t0)/(t1-t0);
+      if (pos>=1 || v.currentTime>=t1-1e-3){ pos=0; try{ v.currentTime=t0; }catch(_){} }
+      study.pos = Math.max(0, Math.min(1, pos));
+      updateOverlay();
+      if (useVfc) v.requestVideoFrameCallback(drive); else rafId=requestAnimationFrame(drive);
+    };
+    const p=v.play();
+    if (p&&p.catch) p.catch(()=>{ if(study.playing) startPlayRaf(comp,dur); });
+    if (useVfc) v.requestVideoFrameCallback(drive); else rafId=requestAnimationFrame(drive);
+    return;
+  }
+  startPlayRaf(comp,dur);
+}
+function startPlayRaf(comp,dur){          // no-video fallback: advance the clock and redraw overlay
   const step = (ts)=>{
     if (!study.playing) return;
     if (lastTs!=null){
       const sp = parseFloat($("playSpeed").value);
       study.pos += (ts-lastTs)/1000 * sp / dur;
       if (study.pos>1) study.pos=0;
-      updateDynamic();
+      updateOverlay();
     }
     lastTs=ts; rafId=requestAnimationFrame(step);
   };
   rafId=requestAnimationFrame(step);
 }
 $("btnPlay").addEventListener("click",()=> study.playing?stopPlay():startPlay());
+$("playSpeed").addEventListener("change",()=>{        // live speed change during native video playback
+  if (study.playing && studyVid && studyVid.el){
+    try{ studyVid.el.playbackRate = Math.max(0.0625, Math.min(4, parseFloat($("playSpeed").value))); }catch(_){}
+  }
+});
 /* step by source video frames at the swing's measured fps */
 function studyStep(n){
   const comp=compiled(study.primary); if (!comp) return;
