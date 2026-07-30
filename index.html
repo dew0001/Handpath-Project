@@ -697,9 +697,25 @@ function compileSwing(sw){
   const hx=ch(p=>p.h[0]), hy=ch(p=>p.h[1]), hz=has3d?ch(p=>p.h[2]):null;
   let cxv=null,cyv=null,czv=null;
   if (hasClub){
-    const cxa=club.map(c=>c?c[0]:null), cya=club.map(c=>c?c[1]:null), cza=club.map(c=>c&&c.length>2?c[2]:null);
-    const filled = arr => arr.every(v=>v!=null);
-    if (filled(cxa)){ cxv=(u)=>crSample(cxa,u); cyv=(u)=>crSample(cya,u); czv = has3d&&filled(cza) ? (u)=>crSample(cza,u) : null; }
+    // clubhead is optional per-frame; fill gaps by interpolation across the frames
+    // that HAVE it (hold at the ends) so the path renders even if not every frame is tagged.
+    const known = []; club.forEach((c,i)=>{ if(c) known.push(i); });
+    const fillGaps = (get)=>{
+      const raw = club.map(c=>c?get(c):null);
+      if (known.length===1){ return raw.map(()=>raw[known[0]]); }
+      const out = raw.slice();
+      for (let i=0;i<known[0];i++) out[i]=raw[known[0]];                       // hold before first
+      for (let i=known[known.length-1]+1;i<n;i++) out[i]=raw[known[known.length-1]]; // hold after last
+      for (let k=0;k<known.length-1;k++){                                       // interpolate interior gaps
+        const i0=known[k], i1=known[k+1];
+        for (let i=i0+1;i<i1;i++){ const f=(i-i0)/(i1-i0); out[i]=raw[i0]+(raw[i1]-raw[i0])*f; }
+      }
+      return out;
+    };
+    const cxa=fillGaps(c=>c[0]), cya=fillGaps(c=>c[1]);
+    const hasAllZ = has3d && known.every(i=>club[i].length>2 && club[i][2]!=null);
+    cxv=(u)=>crSample(cxa,u); cyv=(u)=>crSample(cya,u);
+    czv = hasAllZ ? (u)=>crSample(fillGaps(c=>c.length>2?c[2]:0),u) : null;
   }
   // extra digitized 2D body traces (hip / shoulder / head), sampled per subset
   const extras = {};
