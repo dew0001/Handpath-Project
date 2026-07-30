@@ -316,9 +316,9 @@ footer.app a{color:var(--accent)}
     <div class="panel">
       <h3>Live metrics</h3>
       <div class="metrics">
-        <div class="metric"><div class="v mono" id="mHands">—</div><div class="k">hands x / y (in)</div></div>
+        <div class="metric"><div class="v mono" id="mHands">—</div><div class="k" id="mHandsK">hands x / y (in)</div></div>
         <div class="metric"><div class="v mono" id="mDepth">—</div><div class="k">hand depth z (in)</div></div>
-        <div class="metric"><div class="v mono" id="mHandSpd">—</div><div class="k">hand speed</div></div>
+        <div class="metric"><div class="v mono" id="mHandSpd">—</div><div class="k" id="mHandSpdK">hand speed</div></div>
         <div class="metric"><div class="v mono" id="mClubSpd">—</div><div class="k">clubhead speed</div></div>
       </div>
       <div id="impactStats" class="hint" style="margin-top:8px"></div>
@@ -512,7 +512,7 @@ footer.app a{color:var(--accent)}
           <button id="btnSavePlayer" class="primary">Save</button>
         </div>
         <div class="row"><button id="btnExportProject">Export project (video + points)…</button></div>
-        <p class="hint">Needs calibration + ≥ 6 frames with hands. <b>Export project</b> saves the video + points to re-open later.</p>
+        <p class="hint">Needs calibration + ≥ 6 frames of any one point (hands, clubhead, head…). <b>Export project</b> saves the video + points to re-open later.</p>
       </div>
     </div>
 
@@ -1204,7 +1204,10 @@ function updateOverlay(){                  // redraw overlay + readouts only (no
     }
     // (no moving position dot — the scrubbed video frame shows the current position)
   }
-  // readouts
+  // readouts (labels adapt to whatever point is tracked)
+  const pkName = KP_NAME[comp.sw.primaryKp || "h"] || "point";
+  $("mHandsK").textContent = `${pkName} x / y (in)`;
+  $("mHandSpdK").textContent = `${pkName} speed`;
   $("mHands").textContent = `${fmt(S.hx[i])} / ${fmt(S.hy[i])}`;
   $("mDepth").textContent = S.hz&&S.hz[i]!=null ? fmt(S.hz[i]) : "—";
   $("mHandSpd").textContent = S.handSpd[i]!=null ? fmt(S.handSpd[i]*IN_S_TO_MPH,1)+" mph" : "—";
@@ -1354,7 +1357,7 @@ async function exportSavedProject(s){
     return { tMs: Math.round(((vidT0||0)+a.t)*1000), p:a.p||0, ref:!!a.ref, pts, ai:[] };
   });
   const proj={ app:"handpath-lab-project", version:1,
-    meta:{ name:s.name, club:s.club, view:s.view, dir:dir||1, height:s.height||71 },
+    meta:{ name:s.name, club:s.club, view:s.view, dir:dir||1, height:s.height||71, primaryKp:s.primaryKp||"h" },
     cal:{ pxPerIn, groundY, centerX }, vidW, vidH, fps:s.fps||30, frames, video:null };
   if (s.hasVideo){
     const blob=await idbVideo("get", s.id);
@@ -1522,23 +1525,30 @@ async function projectToPlayer(j){
   const cal=j.cal, meta=j.meta||{};
   if (!cal || !Array.isArray(j.frames)) throw new Error("project has no calibration/frames");
   const dir=meta.dir||1;
-  const frames=j.frames.filter(f=>f.pts && f.pts.h).sort((a,b)=>a.tMs-b.tMs);
+  const all=j.frames.filter(f=>f.pts).sort((a,b)=>a.tMs-b.tMs);
+  // primary point: meta hint, else hands, else clubhead/head/… — supports point-only captures
+  let primaryKp = (meta.primaryKp && all.some(f=>f.pts[meta.primaryKp])) ? meta.primaryKp : null;
+  if (!primaryKp){ for (const k of KP_PRIORITY){ if (all.filter(f=>f.pts[k]).length>=2){ primaryKp=k; break; } } }
+  if (!primaryKp) throw new Error("project has no tracked points");
+  const frames=all.filter(f=>f.pts[primaryKp]);
   if (frames.length<2) throw new Error("project has too few tracked frames");
   const {pxPerIn,groundY,centerX}=cal;
   const toWorld=(p)=>[dir*(p[0]-centerX)/pxPerIn, (groundY-p[1])/pxPerIn];
   const t0=frames[0].tMs;
   const anchors=frames.map(f=>{
-    const [x,y]=toWorld(f.pts.h);
+    const [x,y]=toWorld(f.pts[primaryKp]);
     const a={t:(f.tMs-t0)/1000, p:f.p||0, h:[x,y,null]};
     if (f.ref) a.ref=true;
-    if (f.pts.c){ const [cx0,cy0]=toWorld(f.pts.c); a.c=[cx0,cy0,null]; }
-    for (const k of ["hip","sh","head"]) if (f.pts[k]) a[k]=toWorld(f.pts[k]);
+    for (const k of ["c","hip","sh","head"]){
+      if (k===primaryKp || !f.pts[k]) continue;
+      const [px,py]=toWorld(f.pts[k]); a[k]= k==="c" ? [px,py,null] : [px,py];
+    }
     return a;
   });
   const id="d"+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);
   const player={ id, name: meta.name||"Imported project", club: meta.club||"Other",
     view: meta.view==="dtl"?"dtl":"face", source:"project import", height: meta.height||71,
-    fps: j.fps||30, anchors };
+    fps: j.fps||30, primaryKp, anchors };
   if (j.video && j.vidW && j.vidH){
     player.cal={ pxPerIn, groundY, centerX, dir, vidW:j.vidW, vidH:j.vidH, vidT0:t0/1000 };
     try{
@@ -1945,14 +1955,13 @@ function redrawOverlay(){
   }
   if (dig._calPts && dig.calStep>=0)
     for (const p of dig._calPts) el("circle",{cx:p[0],cy:p[1],r:r,fill:"var(--c-ov1)"},ov);
-  // full hands trace so far
+  // connecting traces so far — hands and clubhead each get their own line
   const times=[...dig.frames.keys()].sort((a,b)=>a-b);
-  let d="";
-  for (const t of times){
-    const h=dig.frames.get(t).pts.h;
-    if (h) d+=(d?"L":"M")+h[0].toFixed(1)+" "+h[1].toFixed(1);
+  for (const [key,col] of [["h","var(--c-down)"],["c","var(--c-club)"]]){
+    let d="";
+    for (const t of times){ const p=dig.frames.get(t).pts[key]; if(p) d+=(d?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1); }
+    if (d) el("path",{d,fill:"none",stroke:col,"stroke-width":r/1.6,opacity:.85},ov);
   }
-  if (d) el("path",{d,fill:"none",stroke:"var(--c-down)","stroke-width":r/1.6,opacity:.85},ov);
   // current-frame points (with labels), past frames faint
   const curT = digCurFrame();
   for (const t of times){
@@ -2020,11 +2029,24 @@ function renderFrames(){
   buildPNav();
 }
 
+/* which point becomes the primary path: hands if tracked, else clubhead, head, … —
+   so you can track ONLY a clubhead / head / whatever without any hand path. */
+const KP_PRIORITY = ["h","c","head","hip","sh"];
+const KP_NAME = { h:"hands", c:"clubhead", head:"head", hip:"lead hip", sh:"lead shoulder" };
+function pickPrimaryKp(){
+  for (const k of KP_PRIORITY){
+    const ts=[...dig.frames.keys()].filter(t=>dig.frames.get(t).pts[k]);
+    if (ts.length>=6) return { kp:k, times:ts.sort((a,b)=>a-b) };
+  }
+  return null;
+}
+
 /* save capture -> library */
 $("btnSavePlayer").addEventListener("click",()=>{
   if (!dig.cal){ toast("Calibrate first"); return; }
-  const times=[...dig.frames.keys()].sort((a,b)=>a-b).filter(t=>dig.frames.get(t).pts.h);
-  if (times.length<6){ toast("Need at least 6 frames with a hands point"); return; }
+  const primary=pickPrimaryKp();
+  if (!primary){ toast("Track at least 6 frames of one point (hands, clubhead, head…)"); return; }
+  const { kp:primaryKp, times }=primary;
   const name=$("digName").value.trim() || "Digitized swing "+(savedPlayers.length+1);
   const dir=parseInt($("digDir").value,10);
   const view=$("digView").value;
@@ -2033,12 +2055,15 @@ $("btnSavePlayer").addEventListener("click",()=>{
   const toWorld=(p)=>[dir*(p[0]-centerX)/pxPerIn, (groundY-p[1])/pxPerIn];
   const anchors=times.map(t=>{
     const fr=dig.frames.get(t);
-    const [x,y]=toWorld(fr.pts.h);
-    const a={t:(t-t0)/1000, p:fr.p||0, h:[x,y,null]};
+    const [x,y]=toWorld(fr.pts[primaryKp]);
+    const a={t:(t-t0)/1000, p:fr.p||0, h:[x,y,null]};   // 'h' = the primary tracked point
     if (fr.ref) a.ref=true;
-    if (fr.pts.c){ const [cx0,cy0]=toWorld(fr.pts.c); a.c=[cx0,cy0,null]; }
-    for (const [src,dst] of [["hip","hip"],["sh","sh"],["head","head"]])
-      if (fr.pts[src]){ a[dst]=toWorld(fr.pts[src]); }
+    // store any OTHER tracked points (not the promoted primary) as their own traces
+    for (const k of ["c","hip","sh","head"]){
+      if (k===primaryKp || !fr.pts[k]) continue;
+      const [px,py]=toWorld(fr.pts[k]);
+      a[k] = k==="c" ? [px,py,null] : [px,py];
+    }
     return a;
   });
   // same name (case/space-insensitive) = overwrite; also collapse any pre-existing duplicates
@@ -2052,6 +2077,7 @@ $("btnSavePlayer").addEventListener("click",()=>{
     source: [...dig.frames.values()].some(f=>f.ai&&f.ai.size) ? "auto-track (AI)" : "manual digitize",
     height:parseFloat($("digHeight").value)||71,
     fps: dig.fps||30,
+    primaryKp,
     anchors,
   };
   // store calibration + video so Study mode can overlay the path on the footage
@@ -2297,7 +2323,7 @@ async function exportProject(){
   const name=($("digName").value.trim()||"handpath-project");
   const proj={
     app:"handpath-lab-project", version:1,
-    meta:{ name, club:$("digClub").value, view:$("digView").value, dir:parseInt($("digDir").value,10), height:parseFloat($("digHeight").value)||71 },
+    meta:{ name, club:$("digClub").value, view:$("digView").value, dir:parseInt($("digDir").value,10), height:parseFloat($("digHeight").value)||71, primaryKp:(pickPrimaryKp()||{}).kp||"h" },
     cal: dig.cal, vidW:$("digVideo").videoWidth||null, vidH:$("digVideo").videoHeight||null,
     fps: dig.fps||30,
     frames: framesToJSON(),
