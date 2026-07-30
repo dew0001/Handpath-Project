@@ -233,6 +233,9 @@ table.datatable th{color:var(--muted);font-weight:600}
 .pguide-face{width:100%;height:100%;object-fit:contain;display:block}
 .pguide-dtl{display:flex;gap:8px;width:100%;height:100%;align-items:center;justify-content:center}
 .pguide-dtl img{height:100%;width:auto;max-width:calc(50% - 4px);object-fit:contain;display:block}
+/* quick video sketch */
+#sketchBox{overflow:hidden}
+#sketchSvg{max-height:calc(100dvh - 250px);margin:0 auto}
 .notice{font-size:12px;color:var(--muted);border-left:3px solid var(--c-down);padding:4px 10px;background:var(--panel2);border-radius:0 6px 6px 0}
 footer.app{padding:14px 20px 26px;max-width:1480px;margin:0 auto;color:var(--muted);font-size:12px}
 footer.app a{color:var(--accent)}
@@ -259,6 +262,11 @@ footer.app a{color:var(--accent)}
       <div class="stack">
         <select id="primarySel" aria-label="Primary swing"></select>
         <div id="primaryMeta" class="hint"></div>
+        <div style="border-top:1px solid var(--line);margin-top:2px;padding-top:8px">
+          <button id="btnSketchVideo" style="width:100%">✏️ Draw on a video</button>
+          <input type="file" id="sketchFile" accept="video/*" hidden>
+          <p class="hint" style="margin:6px 0 0">Load any clip and mark it up — no digitizing needed.</p>
+        </div>
       </div>
     </div>
 
@@ -378,6 +386,34 @@ footer.app a{color:var(--accent)}
     </div>
 
     <div id="compareWrap" hidden></div>
+
+    <div id="sketchWrap" hidden>
+      <div class="stagebox" id="sketchBox">
+        <span class="stagelabel" id="sketchLabel">Video sketch</span>
+        <svg id="sketchSvg" viewBox="0 0 1280 720" role="img" aria-label="Video to draw on"></svg>
+      </div>
+      <div class="transport" id="sketchTransport" style="margin-top:12px">
+        <div class="controls">
+          <button id="skPlay" class="primary" style="min-width:74px">Play</button>
+          <button id="skPrev" title="Back one frame">−1f</button>
+          <button id="skNext" title="Forward one frame">+1f</button>
+          <select id="skSpeed" aria-label="Playback speed">
+            <option value="0.15">0.15×</option>
+            <option value="0.3" selected>0.3×</option>
+            <option value="0.6">0.6×</option>
+            <option value="1">1× real time</option>
+          </select>
+          <button id="skZoomOut" title="Zoom out">−</button>
+          <button id="skZoomIn" title="Zoom in">＋</button>
+          <button id="skZoomFit" title="Fit">Fit</button>
+          <span class="mono hint" id="skTime" style="min-width:70px;text-align:right">0.00 s</span>
+          <button id="skExit" style="margin-left:auto">✕ Close video</button>
+        </div>
+        <div class="scrubstack">
+          <input type="range" id="skScrub" min="0" max="1000" value="0" step="1" aria-label="Scrub video">
+        </div>
+      </div>
+    </div>
 
     <div class="transport" id="soloTransport">
       <div class="controls">
@@ -2735,7 +2771,7 @@ function attachDraw(svg){
   svg.addEventListener("pointerup",finish);
   svg.addEventListener("pointercancel",finish);
 }
-attachDraw($("faceSvg")); attachDraw($("dtlSvg"));
+attachDraw($("faceSvg")); attachDraw($("dtlSvg")); attachDraw($("sketchSvg"));
 document.querySelectorAll("#annotTools button").forEach(b=>{
   b.addEventListener("click",()=>{
     annoTool = annoTool===b.dataset.tool ? null : b.dataset.tool;
@@ -2747,10 +2783,94 @@ document.querySelectorAll("#annotTools button").forEach(b=>{
 });
 $("annotColor").addEventListener("input",e=>annoColor=e.target.value);
 $("annotWidth").addEventListener("input",e=>annoWidth=+e.target.value);
-function redrawAllAnno(){ if(cmp.on) renderCompare(); else rebuildStages(); }
+function redrawAllAnno(){ if(sketch.on) drawSketchStage(); else if(cmp.on) renderCompare(); else rebuildStages(); }
 $("annotUndo").addEventListener("click",()=>{ const k=annoOrder.pop(); if(k&&annoStore[k]){ annoStore[k].pop(); redrawAllAnno(); } });
 $("annotClear").addEventListener("click",()=>{ for(const k in annoStore) annoStore[k]=[]; annoOrder.length=0; redrawAllAnno(); });
 $("annotShow").addEventListener("change",e=>{ annoShow=e.target.checked; redrawAllAnno(); });
+
+/* =================================================================
+   QUICK VIDEO SKETCH — load any clip into Study and draw on it, no
+   digitizing/calibration. Reuses the annotation tools + zoom.
+   ================================================================= */
+const sketch = { on:false, url:null, el:null, fps:30, playing:false, raf:null, z:1, tx:0, ty:0 };
+function drawSketchStage(){
+  const svg=$("sketchSvg"); svg.textContent="";
+  const v=sketch.el; if (!v) return;
+  const vw=v.videoWidth||1280, vh=v.videoHeight||720;
+  svg.setAttribute("viewBox",`0 0 ${vw} ${vh}`);
+  const fo=el("foreignObject",{x:0,y:0,width:vw,height:vh},svg);
+  fo.appendChild(v);
+  svg.dataset.annoKey="sketch";
+  drawAnnotationsFor(svg);
+}
+function sketchApplyZoom(){
+  const svg=$("sketchSvg"); const v=sketch.el; if(!v) return;
+  const vw=v.videoWidth||1280, vh=v.videoHeight||720;
+  const w=vw/sketch.z, h=vh/sketch.z;
+  const cx=Math.min(vw-w/2, Math.max(w/2, sketch.tx)), cy=Math.min(vh-h/2, Math.max(h/2, sketch.ty));
+  sketch.tx=cx; sketch.ty=cy;
+  svg.setAttribute("viewBox",`${(cx-w/2).toFixed(1)} ${(cy-h/2).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`);
+}
+function sketchZoomBump(f){ const v=sketch.el; if(!v) return;
+  if(sketch.z===1){ sketch.tx=(v.videoWidth||1280)/2; sketch.ty=(v.videoHeight||720)/2; }
+  sketch.z=Math.min(8,Math.max(1,sketch.z*f)); if(sketch.z===1){sketch.tx=sketch.ty=0;} sketchApplyZoom(); }
+function sketchZoomFit(){ sketch.z=1; sketch.tx=0; sketch.ty=0; const v=sketch.el; if(v) $("sketchSvg").setAttribute("viewBox",`0 0 ${v.videoWidth||1280} ${v.videoHeight||720}`); }
+function sketchSetScrub(){ const v=sketch.el; if(!v) return;
+  $("skScrub").value=Math.round((v.currentTime/(v.duration||1))*1000);
+  $("skTime").textContent=v.currentTime.toFixed(2)+" s"; }
+function sketchStop(){ sketch.playing=false; $("skPlay").textContent="Play";
+  if(sketch.raf) cancelAnimationFrame(sketch.raf); sketch.raf=null;
+  if(sketch.el){ try{ sketch.el.pause(); }catch(_){} } }
+function sketchPlay(){
+  const v=sketch.el; if(!v) return;
+  sketch.playing=true; $("skPlay").textContent="Pause";
+  if (v.currentTime>=(v.duration||0)-1e-3) v.currentTime=0;
+  try{ v.playbackRate=Math.max(0.0625,Math.min(4,parseFloat($("skSpeed").value))); }catch(_){}
+  const useVfc=!!v.requestVideoFrameCallback;
+  const drive=()=>{ if(!sketch.playing) return;
+    sketchSetScrub();
+    if(v.currentTime>=(v.duration||0)-1e-3){ sketchStop(); return; }
+    if(useVfc) v.requestVideoFrameCallback(drive); else sketch.raf=requestAnimationFrame(drive); };
+  const p=v.play(); if(p&&p.catch) p.catch(()=>{});
+  if(useVfc) v.requestVideoFrameCallback(drive); else sketch.raf=requestAnimationFrame(drive);
+}
+function sketchStep(n){ const v=sketch.el; if(!v) return; sketchStop();
+  v.currentTime=Math.max(0,Math.min(v.duration||0, v.currentTime+n/(sketch.fps||30))); }
+function enterSketch(file){
+  cleanupSketchVideo();
+  annoStore["sketch"]=[];                       // fresh drawing surface per clip
+  const v=document.createElement("video");
+  v.muted=true; v.playsInline=true; v.preload="auto"; v.style.pointerEvents="none";
+  v.style.width="100%"; v.style.height="100%";
+  sketch.url=URL.createObjectURL(file); v.src=sketch.url; sketch.el=v;
+  v.addEventListener("loadeddata",()=>{ sketchZoomFit(); drawSketchStage(); sketchSetScrub();
+    measureFps(v).then(f=>{ sketch.fps=f||30; }); },{once:true});
+  v.addEventListener("timeupdate",()=>{ if(!sketch.playing) sketchSetScrub(); });
+  stopPlay();
+  if($("tglCompare").checked){ $("tglCompare").checked=false; setCompare(false); }
+  sketch.on=true;
+  $("stages").hidden=true; $("soloTransport").hidden=true; $("compareWrap").hidden=true; $("honesty").hidden=true;
+  $("sketchWrap").hidden=false; $("sketchLabel").textContent=file.name;
+}
+function exitSketch(){
+  sketchStop(); cleanupSketchVideo(); sketch.on=false;
+  $("sketchWrap").hidden=true; $("honesty").hidden=false;
+  $("stages").hidden=false; $("soloTransport").hidden=false;
+  $("faceBox").hidden = study.view==="dtl"; $("dtlBox").hidden = study.view==="face";
+  rebuildStages();
+}
+function cleanupSketchVideo(){ if(sketch.url){ URL.revokeObjectURL(sketch.url); sketch.url=null; } sketch.el=null; sketch.z=1; sketch.tx=0; sketch.ty=0; }
+$("btnSketchVideo").addEventListener("click",()=>$("sketchFile").click());
+$("sketchFile").addEventListener("change",e=>{ const f=e.target.files[0]; if(f) enterSketch(f); e.target.value=""; });
+$("skExit").addEventListener("click",exitSketch);
+$("skPlay").addEventListener("click",()=> sketch.playing?sketchStop():sketchPlay());
+$("skPrev").addEventListener("click",()=>sketchStep(-1));
+$("skNext").addEventListener("click",()=>sketchStep(1));
+$("skScrub").addEventListener("input",e=>{ sketchStop(); const v=sketch.el; if(v){ v.currentTime=(+e.target.value/1000)*(v.duration||0); } });
+$("skSpeed").addEventListener("change",()=>{ if(sketch.playing&&sketch.el){ try{ sketch.el.playbackRate=Math.max(0.0625,Math.min(4,parseFloat($("skSpeed").value))); }catch(_){} } });
+$("skZoomIn").addEventListener("click",()=>sketchZoomBump(1.3));
+$("skZoomOut").addEventListener("click",()=>sketchZoomBump(1/1.3));
+$("skZoomFit").addEventListener("click",sketchZoomFit);
 
 /* ---------- boot ---------- */
 refreshSelectors();
